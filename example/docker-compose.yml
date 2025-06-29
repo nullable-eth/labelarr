@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  labelarr:
+    image: nullableeth/labelarr:latest
+    container_name: labelarr
+    restart: unless-stopped
+    environment:
+      - PLEX_SERVER=192.168.1.12
+      - PLEX_PORT=32400
+      - PLEX_REQUIRES_HTTPS=true
+      - PLEX_TOKEN=your_plex_token_here
+      - TMDB_API_KEY=your_tmdb_api_key_here
+      - PROCESS_TIMER=5m
+      - LIBRARY_ID=1
+    networks:
+      - labelarr
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  labelarr:
+    driver: bridge 

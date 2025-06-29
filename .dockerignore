@@ -1,0 +1,26 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Go build artifacts
+*.exe
+plexlabels.exe
+labelarr
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp 
