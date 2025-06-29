@@ -1,8 +1,8 @@
-# PlexLabelarr 🎬🏷️
+# Labelarr 🎬🏷️
 
-[![Docker Image](https://img.shields.io/docker/v/nullableeth/plexlabelarr?style=flat-square)](https://hub.docker.com/r/nullableeth/plexlabelarr)
-[![Docker Pulls](https://img.shields.io/docker/pulls/nullableeth/plexlabelarr?style=flat-square)](https://hub.docker.com/r/nullableeth/plexlabelarr)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/nullable-eth/PlexLabelarr?style=flat-square)](https://golang.org/)
+[![Docker Image](https://img.shields.io/docker/v/nullableeth/labelarr?style=flat-square)](https://hub.docker.com/r/nullableeth/labelarr)
+[![Docker Pulls](https://img.shields.io/docker/pulls/nullableeth/labelarr?style=flat-square)](https://hub.docker.com/r/nullableeth/labelarr)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/nullable-eth/labelarr?style=flat-square)](https://golang.org/)
 
 Automatically sync TMDb movie keywords as Plex labels - A lightweight Go application that bridges your Plex movie library with The Movie Database, adding relevant keywords as searchable labels.
 
@@ -16,12 +16,13 @@ Automatically sync TMDb movie keywords as Plex labels - A lightweight Go applica
 - ⚙️ **Environment Configuration**: Fully configurable via environment variables
 - 🔒 **Protocol Flexibility**: Supports both HTTP and HTTPS Plex connections
 - Allows you to have TMBDB keywords as labels in Plex:
-![Screenshot 2025-06-12 100834](https://github.com/user-attachments/assets/04a01fee-0351-47c3-862c-0e71cfca2456)
+![1](https://github.com/user-attachments/assets/914c5d32-1a90-4378-be3c-38679bc6263c)
 - Create custom dynamic filters for multiple labels that will update automatically when new movies are labeled:
-![Screenshot 2025-06-12 101530](https://github.com/user-attachments/assets/54a1686e-2a29-4958-9e6e-1a592a837130)
+![2](https://github.com/user-attachments/assets/23ab5d2c-9300-4560-a626-31ed836c583c)
 - Filter on the fly by a label:
+ 
+![3](https://github.com/user-attachments/assets/886df494-83c5-4fff-862d-8f51152bd68c)
 
-![Screenshot 2025-06-12 101413](https://github.com/user-attachments/assets/2b35580f-6443-4a6d-9e40-f8217e660699)
 
 ## 📋 Environment Variables
 
@@ -56,14 +57,14 @@ Automatically sync TMDb movie keywords as Plex labels - A lightweight Go applica
 ### Quick Start
 
 ```bash
-docker run -d --name plexlabelarr \
+docker run -d --name labelarr \
   -e PLEX_SERVER=192.168.1.12 \
   -e PLEX_PORT=32400 \
   -e PLEX_REQUIRES_HTTPS=true \
   -e PLEX_TOKEN=your_plex_token_here \
   -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
   -e PROCESS_TIMER=5m \
-  nullableeth/plexlabelarr:latest
+  nullableeth/labelarr:latest
 ```
 
 ### Docker Compose
@@ -75,9 +76,9 @@ docker run -d --name plexlabelarr \
 version: '3.8'
 
 services:
-  plexlabelarr:
-    image: nullableeth/plexlabelarr:latest
-    container_name: plexlabelarr
+  labelarr:
+    image: nullableeth/labelarr:latest
+    container_name: labelarr
     restart: unless-stopped
     environment:
       - PLEX_SERVER=192.168.1.12
@@ -86,17 +87,6 @@ services:
       - PLEX_TOKEN=your_plex_token_here
       - TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
       - PROCESS_TIMER=5m
-    networks:
-      - plexlabelarr
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-networks:
-  plexlabelarr:
-    driver: bridge
 ```
 
 3. Run: `docker-compose up -d`
@@ -112,8 +102,8 @@ networks:
 
 ```bash
 # Clone the repository
-git clone https://github.com/nullable-eth/PlexLabelarr.git
-cd PlexLabelarr
+git clone https://github.com/nullable-eth/labelarr.git
+cd labelarr
 
 # Initialize Go modules
 go mod tidy
@@ -132,10 +122,10 @@ go run main.go
 
 ```bash
 # Build for current platform
-go build -o plexlabelarr main.go
+go build -olabelarr main.go
 
 # Build for Linux (Docker)
-CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o plexlabelarr main.go
+CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o labelarr main.go
 ```
 
 ## 📖 How It Works
@@ -192,10 +182,10 @@ Example file paths:
 
 ```bash
 # Docker logs
-docker logs plexlabelarr
+docker logs labelarr
 
 # Follow logs
-docker logs -f plexlabelarr
+docker logs -f labelarr
 ```
 
 ### Log Output Includes
@@ -270,8 +260,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/nullable-eth/PlexLabelarr/issues)
-- **Docker Hub**: [nullableeth/plexlabelarr](https://hub.docker.com/r/nullableeth/plexlabelarr)
+- **Issues**: [GitHub Issues](https://github.com/nullable-eth/labelarr/issues)
+- **Docker Hub**: [nullableeth/labelarr](https://hub.docker.com/r/nullableeth/labelarr)
 - **Documentation**: This README and inline code comments
 
 ---

@@ -296,7 +296,7 @@ func processAllMovies(config Config) {
 
 		// Only show processing output for movies that need updates
 		fmt.Printf("\n🎬 Processing movie %d/%d: %s (%d)\n", i+1, len(movies), movie.Title, movie.Year)
-		fmt.Printf("🔑 TMDb ID: %s\n", tmdbID)
+		fmt.Printf("🔑 TMDb ID: %s (%s)\n", tmdbID, movie.Title)
 		fmt.Printf("🏷️ Found %d TMDb keywords\n", len(keywords))
 
 		// Sync labels with keywords
