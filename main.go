@@ -15,13 +15,13 @@ import (
 
 // Configuration struct
 type Config struct {
-	PlexServer        string
-	PlexPort          string
-	PlexToken         string
-	LibraryID         string
+	PlexServer          string
+	PlexPort            string
+	PlexToken           string
+	LibraryID           string
 	TMDbReadAccessToken string
-	ProcessTimer      time.Duration
-	PlexRequiresHTTPS bool
+	ProcessTimer        time.Duration
+	PlexRequiresHTTPS   bool
 }
 
 // Plex API response structures
@@ -141,16 +141,31 @@ var totalMovieCount int
 func main() {
 	// Configuration from environment variables
 	config := Config{
-		PlexServer:        os.Getenv("PLEX_SERVER"),
-		PlexPort:          os.Getenv("PLEX_PORT"),
-		PlexToken:         os.Getenv("PLEX_TOKEN"),
-		LibraryID:         os.Getenv("LIBRARY_ID"), // Will be auto-detected
+		PlexServer:          os.Getenv("PLEX_SERVER"),
+		PlexPort:            os.Getenv("PLEX_PORT"),
+		PlexToken:           os.Getenv("PLEX_TOKEN"),
+		LibraryID:           os.Getenv("LIBRARY_ID"), // Will be auto-detected
 		TMDbReadAccessToken: os.Getenv("TMDB_READ_ACCESS_TOKEN"),
-		ProcessTimer:      getProcessTimerFromEnv(),
-		PlexRequiresHTTPS: getBoolEnvWithDefault("PLEX_REQUIRES_HTTPS", true),
+		ProcessTimer:        getProcessTimerFromEnv(),
+		PlexRequiresHTTPS:   getBoolEnvWithDefault("PLEX_REQUIRES_HTTPS", true),
 	}
 
 	processAllMovieLibraries := getBoolEnvWithDefault("PROCESS_ALL_MOVIE_LIBRARIES", false)
+
+	// Add UPDATE_FIELD env variable
+	updateField := getEnvWithDefault("UPDATE_FIELD", "labels")
+	if updateField != "labels" && updateField != "genre" {
+		fmt.Println("❌ UPDATE_FIELD must be 'labels' or 'genre'")
+		os.Exit(1)
+	}
+
+	// Add REMOVE env variable
+	removeMode := os.Getenv("REMOVE")
+	if removeMode != "" && removeMode != "lock" && removeMode != "unlock" {
+		fmt.Println("❌ REMOVE must be 'lock' or 'unlock'")
+		os.Exit(1)
+	}
+	isRemoveMode := removeMode != ""
 
 	if config.PlexToken == "" {
 		fmt.Println("❌ Please set PLEX_TOKEN environment variable")
@@ -167,9 +182,15 @@ func main() {
 		protocol = "http"
 	}
 
-	fmt.Println("🏷️ Starting Labelarr with TMDb Integration...")
+	if isRemoveMode {
+		fmt.Printf("🗑️ Starting Labelarr in REMOVE mode (field: %s, lock: %s)...\n", updateField, removeMode)
+	} else {
+		fmt.Println("🏷️ Starting Labelarr with TMDb Integration...")
+	}
 	fmt.Printf("📡 Server: %s://%s:%s\n", protocol, config.PlexServer, config.PlexPort)
-	fmt.Printf("⏱️ Processing interval: %v\n", config.ProcessTimer)
+	if !isRemoveMode {
+		fmt.Printf("⏱️ Processing interval: %v\n", config.ProcessTimer)
+	}
 
 	// Step 1: Get all libraries first
 	fmt.Println("\n📚 Step 1: Fetching all libraries...")
@@ -207,15 +228,29 @@ func main() {
 		fmt.Printf("\n🎯 Using Movies library: %s (ID: %s)\n", movieLibraries[0].Title, movieLibraries[0].Key)
 	}
 
+	// Handle REMOVE mode - run once and exit
+	if isRemoveMode {
+		fmt.Printf("\n🗑️ Starting keyword removal from %s...\n", updateField)
+
+		if processAllMovieLibraries {
+			for _, lib := range movieLibraries {
+				fmt.Printf("\n==============================\n")
+				fmt.Printf("🎬 Processing library: %s (ID: %s)\n", lib.Title, lib.Key)
+				libConfig := config
+				libConfig.LibraryID = lib.Key
+				removeKeywordsFromMovies(libConfig, updateField, removeMode)
+			}
+		} else {
+			config.LibraryID = movieLibraries[0].Key
+			removeKeywordsFromMovies(config, updateField, removeMode)
+		}
+
+		fmt.Println("\n✅ Keyword removal completed. Exiting.")
+		os.Exit(0)
+	}
+
 	// Start the periodic processing
 	fmt.Println("\n🔄 Starting periodic movie processing...")
-
-	// Add UPDATE_FIELD env variable
-	updateField := getEnvWithDefault("UPDATE_FIELD", "labels")
-	if updateField != "labels" && updateField != "genre" {
-		fmt.Println("❌ UPDATE_FIELD must be 'labels' or 'genre'")
-		os.Exit(1)
-	}
 
 	processFunc := func() {
 		if processAllMovieLibraries {
@@ -492,13 +527,13 @@ func updateMovieFieldWithKeywords(config Config, movieID string, keywords []stri
 
 	if updateField == "labels" {
 		for i, keyword := range keywords {
-			encodedKeyword := url.QueryEscape(keyword)
+			encodedKeyword := url.PathEscape(keyword)
 			basePath += fmt.Sprintf("&label%%5B%d%%5D.tag.tag=%s", i, encodedKeyword)
 		}
 		basePath += "&label.locked=1"
 	} else {
 		for i, keyword := range keywords {
-			encodedKeyword := url.QueryEscape(keyword)
+			encodedKeyword := url.PathEscape(keyword)
 			basePath += fmt.Sprintf("&genre%%5B%d%%5D.tag.tag=%s", i, encodedKeyword)
 		}
 		basePath += "&genre.locked=1"
@@ -695,4 +730,226 @@ func buildPlexURL(config Config, path string) string {
 		protocol = "http"
 	}
 	return fmt.Sprintf("%s://%s:%s%s", protocol, config.PlexServer, config.PlexPort, path)
+}
+
+// New function to remove keywords from movies
+func removeKeywordsFromMovies(config Config, updateField string, removeMode string) {
+	fmt.Println("\n📋 Fetching all movies from library...")
+	movies, err := getMoviesFromLibrary(config)
+	if err != nil {
+		fmt.Printf("❌ Error fetching movies: %v\n", err)
+		return
+	}
+
+	if len(movies) == 0 {
+		fmt.Println("❌ No movies found in library!")
+		return
+	}
+
+	totalMovieCount = len(movies)
+	fmt.Printf("✅ Found %d movies in library\n", totalMovieCount)
+
+	processedMovies := 0
+	skippedMovies := 0
+
+	for i, movie := range movies {
+		tmdbID := extractTMDbID(movie)
+		if tmdbID == "" {
+			fmt.Printf("⚠️ No TMDb ID found for movie: %s - skipping\n", movie.Title)
+			skippedMovies++
+			continue
+		}
+
+		// Get TMDb keywords to know what to remove
+		tmdbKeywords, err := getTMDbKeywords(config, tmdbID)
+		if err != nil {
+			fmt.Printf("❌ Error fetching TMDb keywords for %s: %v - skipping\n", movie.Title, err)
+			skippedMovies++
+			continue
+		}
+
+		if len(tmdbKeywords) == 0 {
+			fmt.Printf("⚠️ No TMDb keywords found for movie: %s - skipping\n", movie.Title)
+			skippedMovies++
+			continue
+		}
+
+		// Fetch detailed movie information
+		movieDetails, err := getMovieDetails(config, movie.RatingKey)
+		if err != nil {
+			fmt.Printf("❌ Error fetching movie details for %s: %v - skipping\n", movie.Title, err)
+			skippedMovies++
+			continue
+		}
+
+		var currentValues []string
+		if updateField == "labels" {
+			currentValues = make([]string, len(movieDetails.Label))
+			for j, label := range movieDetails.Label {
+				currentValues[j] = label.Tag
+			}
+		} else {
+			currentValues = make([]string, len(movieDetails.Genre))
+			for j, genre := range movieDetails.Genre {
+				currentValues[j] = genre.Tag
+			}
+		}
+
+		// Create map of TMDb keywords for fast lookup (case-insensitive)
+		tmdbKeywordsMap := make(map[string]bool)
+		for _, keyword := range tmdbKeywords {
+			tmdbKeywordsMap[strings.ToLower(keyword)] = true
+		}
+
+		// Filter out TMDb keywords, keeping only non-TMDb values
+		var filteredValues []string
+		var removedKeywords []string
+		for _, value := range currentValues {
+			if tmdbKeywordsMap[strings.ToLower(value)] {
+				removedKeywords = append(removedKeywords, value)
+			} else {
+				filteredValues = append(filteredValues, value)
+			}
+		}
+
+		// Skip if no keywords to remove
+		if len(removedKeywords) == 0 {
+			fmt.Printf("⚠️ No TMDb keywords found in %s for movie: %s - skipping\n", updateField, movie.Title)
+			skippedMovies++
+			continue
+		}
+
+		fmt.Printf("\n🗑️ Processing movie %d/%d: %s (%d)\n", i+1, len(movies), movie.Title, movie.Year)
+		fmt.Printf("🔑 TMDb ID: %s\n", tmdbID)
+		fmt.Printf("🗑️ Removing %d keywords from %s: %v\n", len(removedKeywords), updateField, removedKeywords)
+		fmt.Printf("🏷️ Keeping %d non-keyword values: %v\n", len(filteredValues), filteredValues)
+
+		// Update the field with filtered values
+		lockField := removeMode == "lock"
+		err = removeMovieFieldKeywords(config, movie.RatingKey, filteredValues, updateField, lockField)
+		if err != nil {
+			fmt.Printf("❌ Error removing keywords from %s: %v\n", updateField, err)
+			continue
+		}
+
+		processedMovies++
+		fmt.Printf("✅ Successfully processed: %s\n", movie.Title)
+
+		// Small delay to avoid overwhelming the APIs
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	fmt.Printf("\n📊 Removal Summary:\n")
+	fmt.Printf("  📈 Total movies in library: %d\n", totalMovieCount)
+	fmt.Printf("  🗑️ Movies processed: %d\n", processedMovies)
+	fmt.Printf("  ⏭️ Skipped movies: %d\n", skippedMovies)
+	fmt.Printf("  🔒 Field lock status: %s\n", removeMode)
+}
+
+// New function to remove keywords from movie field
+func removeMovieFieldKeywords(config Config, movieID string, remainingValues []string, updateField string, lockField bool) error {
+	// Get current movie details to determine what keywords need to be removed
+	movieDetails, err := getMovieDetails(config, movieID)
+	if err != nil {
+		return fmt.Errorf("fetching movie details: %w", err)
+	}
+
+	var currentValues []string
+	if updateField == "labels" {
+		currentValues = make([]string, len(movieDetails.Label))
+		for j, label := range movieDetails.Label {
+			currentValues[j] = label.Tag
+		}
+	} else {
+		currentValues = make([]string, len(movieDetails.Genre))
+		for j, genre := range movieDetails.Genre {
+			currentValues[j] = genre.Tag
+		}
+	}
+
+	// Create map of values to keep for fast lookup (case-insensitive)
+	remainingValuesMap := make(map[string]bool)
+	for _, value := range remainingValues {
+		remainingValuesMap[strings.ToLower(value)] = true
+	}
+
+	// Find values that need to be removed
+	var valuesToRemove []string
+	for _, value := range currentValues {
+		if !remainingValuesMap[strings.ToLower(value)] {
+			valuesToRemove = append(valuesToRemove, value)
+		}
+	}
+
+	if len(valuesToRemove) == 0 {
+		fmt.Printf("  ⚠️ No %s values to remove\n", updateField)
+		return nil
+	}
+
+	// Build request to remove specific values using the -= operator
+	removePath := fmt.Sprintf("/library/sections/%s/all?type=1&id=%s&includeExternalMedia=1", config.LibraryID, movieID)
+
+	// Encode each value individually, then join with URL-encoded commas
+	var encodedValues []string
+	for _, value := range valuesToRemove {
+		encodedValues = append(encodedValues, url.PathEscape(value))
+	}
+	combinedValues := strings.Join(encodedValues, ",") // %2C is URL encoded comma
+	combinedValues = url.PathEscape(combinedValues)
+
+	// Add removal parameters for all values to remove in one shot
+	if updateField == "labels" {
+		removePath += fmt.Sprintf("&label%%5B%%5D.tag.tag-=%s", combinedValues)
+
+		if lockField {
+			removePath += "&label.locked=1"
+		} else {
+			removePath += "&label.locked=0"
+		}
+	} else {
+		removePath += fmt.Sprintf("&genre%%5B%%5D.tag.tag-=%s", combinedValues)
+
+		if lockField {
+			removePath += "&genre.locked=1"
+		} else {
+			removePath += "&genre.locked=0"
+		}
+	}
+	removePath += fmt.Sprintf("&X-Plex-Token=%s", config.PlexToken)
+
+	removeURL := buildPlexURL(config, removePath)
+
+	fmt.Printf("  📤 Removing %d %s values: %v\n", len(valuesToRemove), updateField, valuesToRemove)
+
+	req, err := http.NewRequest("PUT", removeURL, nil)
+	if err != nil {
+		return fmt.Errorf("creating remove request: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("making remove request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("remove HTTP %d: %s - Response: %s", resp.StatusCode, resp.Status, string(body))
+	}
+
+	lockStatus := "unlocked"
+	if lockField {
+		lockStatus = "locked"
+	}
+
+	fmt.Printf("  ✅ Successfully removed %d %s values and %s field\n", len(valuesToRemove), updateField, lockStatus)
+
+	return nil
 }

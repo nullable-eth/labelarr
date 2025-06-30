@@ -36,6 +36,7 @@ Automatically sync TMDb movie keywords as Plex labels - A lightweight Go applica
 | `LIBRARY_ID` | Plex library ID (auto-detected if not set) | - | No |
 | `PROCESS_ALL_MOVIE_LIBRARIES` | Process all movie libraries (set to `true` to enable) | `false` | No |
 | `UPDATE_FIELD` | Field to update: `labels` (default) or `genre` | `labels` | No |
+| `REMOVE` | Remove keywords mode: `lock` or `unlock` (runs once and exits) | - | No |
 
 ## 🆕 UPDATE_FIELD: Sync as Labels or Genres
 
@@ -63,6 +64,59 @@ docker run -d --name labelarr \
 ![Plex genres updated and locked by Labelarr](example/genre.png)
 
 *Genres updated and locked by Labelarr using `UPDATE_FIELD=genre`. The lock icon indicates the field is protected from automatic changes by Plex.*
+
+## 🗑️ REMOVE: Clean Up TMDb Keywords
+
+The `REMOVE` environment variable allows you to remove **only** TMDb keywords from the selected field while preserving all other values (like custom labels for sharing). When `REMOVE` is set, the tool runs once and exits.
+
+### Remove Options
+
+- `REMOVE=lock`: Removes TMDb keywords and **locks** the field to prevent Plex from updating it
+- `REMOVE=unlock`: Removes TMDb keywords and **unlocks** the field so metadata refresh can set new values
+
+### When to Use Each Option
+
+**Use `REMOVE=lock`:**
+
+- When you want to permanently remove TMDb keywords but keep custom labels/genres
+- For users who use labels for sharing or other purposes and don't want Plex to overwrite them
+- When you want manual control over the field content
+
+**Use `REMOVE=unlock`:**
+
+- When you want to clean up and let Plex refresh metadata naturally
+- To reset the field to Plex's default metadata values
+- When switching from TMDb keywords back to standard Plex metadata
+
+### Example Usage
+
+#### Remove TMDb keywords from labels and lock the field
+
+```bash
+docker run --rm \
+  -e PLEX_SERVER=localhost \
+  -e PLEX_PORT=32400 \
+  -e PLEX_TOKEN=your_plex_token_here \
+  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
+  -e UPDATE_FIELD=labels \
+  -e REMOVE=lock \
+  nullableeth/labelarr:latest
+```
+
+#### Remove TMDb keywords from genres and unlock for metadata refresh
+
+```bash
+docker run --rm \
+  -e PLEX_SERVER=localhost \
+  -e PLEX_PORT=32400 \
+  -e PLEX_TOKEN=your_plex_token_here \
+  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
+  -e UPDATE_FIELD=genre \
+  -e REMOVE=unlock \
+  nullableeth/labelarr:latest
+```
+
+**Note:** The `--rm` flag automatically removes the container after completion since this is a one-time operation.
 
 ## 🔑 Getting API Keys
 

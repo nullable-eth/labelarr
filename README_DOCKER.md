@@ -38,6 +38,7 @@ docker run -d --name labelarr \
 | `LIBRARY_ID`              | Plex library ID (auto-detected if not set) | See Library Selection Logic below                                          |
 | `PROCESS_ALL_MOVIE_LIBRARIES` | Process all movie libraries (set to `true` to enable) | `false` |
 | `UPDATE_FIELD`              | Field to update: `labels` (default) or `genre` | `labels` | No |
+| `REMOVE`                    | Remove keywords mode: `lock` or `unlock` (runs once and exits) | - | No |
 
 ## Docker Compose Example
 
@@ -85,6 +86,80 @@ services:
 ```
 
 This setup ensures Labelarr only starts after Plex is healthy, avoiding initial connection errors.
+
+## 🆕 UPDATE_FIELD: Sync as Labels or Genres
+
+You can control whether TMDb keywords are synced as Plex **labels** (default) or **genres** by setting the `UPDATE_FIELD` environment variable:
+
+- `UPDATE_FIELD=labels` (default): Syncs keywords as Plex labels (original behavior)
+- `UPDATE_FIELD=genre`: Syncs keywords as Plex genres
+
+The chosen field will be **locked** after update to prevent Plex from overwriting it.
+
+### Example Usage
+
+```bash
+docker run -d --name labelarr \
+  -e PLEX_SERVER=localhost \
+  -e PLEX_PORT=32400 \
+  -e PLEX_TOKEN=your_plex_token_here \
+  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
+  -e UPDATE_FIELD=genre \
+  nullableeth/labelarr:latest
+```
+
+## 🗑️ REMOVE: Clean Up TMDb Keywords
+
+The `REMOVE` environment variable allows you to remove **only** TMDb keywords from the selected field while preserving all other values (like custom labels for sharing). When `REMOVE` is set, the tool runs once and exits.
+
+### Remove Options
+
+- `REMOVE=lock`: Removes TMDb keywords and **locks** the field to prevent Plex from updating it
+- `REMOVE=unlock`: Removes TMDb keywords and **unlocks** the field so metadata refresh can set new values
+
+### When to Use Each Option
+
+**Use `REMOVE=lock`:**
+
+- When you want to permanently remove TMDb keywords but keep custom labels/genres
+- For users who use labels for sharing or other purposes and don't want Plex to overwrite them
+- When you want manual control over the field content
+
+**Use `REMOVE=unlock`:**
+
+- When you want to clean up and let Plex refresh metadata naturally
+- To reset the field to Plex's default metadata values
+- When switching from TMDb keywords back to standard Plex metadata
+
+### Example Usage
+
+#### Remove TMDb keywords from labels and lock the field
+
+```bash
+docker run --rm \
+  -e PLEX_SERVER=localhost \
+  -e PLEX_PORT=32400 \
+  -e PLEX_TOKEN=your_plex_token_here \
+  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
+  -e UPDATE_FIELD=labels \
+  -e REMOVE=lock \
+  nullableeth/labelarr:latest
+```
+
+#### Remove TMDb keywords from genres and unlock for metadata refresh
+
+```bash
+docker run --rm \
+  -e PLEX_SERVER=localhost \
+  -e PLEX_PORT=32400 \
+  -e PLEX_TOKEN=your_plex_token_here \
+  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
+  -e UPDATE_FIELD=genre \
+  -e REMOVE=unlock \
+  nullableeth/labelarr:latest
+```
+
+**Note:** The `--rm` flag automatically removes the container after completion since this is a one-time operation.
 
 ## TMDb ID Detection
 
@@ -151,27 +226,6 @@ The application provides detailed logging including:
 - **GitHub**: [https://github.com/nullable-eth/Labelarr](https://github.com/nullable-eth/Labelarr)
 - **Issues**: Report bugs and feature requests
 - **Logs**: Check container logs for troubleshooting
-
-## 🆕 UPDATE_FIELD: Sync as Labels or Genres
-
-You can control whether TMDb keywords are synced as Plex **labels** (default) or **genres** by setting the `UPDATE_FIELD` environment variable:
-
-- `UPDATE_FIELD=labels` (default): Syncs keywords as Plex labels (original behavior)
-- `UPDATE_FIELD=genre`: Syncs keywords as Plex genres
-
-The chosen field will be **locked** after update to prevent Plex from overwriting it.
-
-### Example Usage
-
-```bash
-docker run -d --name labelarr \
-  -e PLEX_SERVER=localhost \
-  -e PLEX_PORT=32400 \
-  -e PLEX_TOKEN=your_plex_token_here \
-  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
-  -e UPDATE_FIELD=genre \
-  nullableeth/labelarr:latest
-```
 
 ---
 
