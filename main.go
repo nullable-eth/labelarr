@@ -145,6 +145,8 @@ func main() {
 		PlexRequiresHTTPS: getBoolEnvWithDefault("PLEX_REQUIRES_HTTPS", true),
 	}
 
+	processAllMovieLibraries := getBoolEnvWithDefault("PROCESS_ALL_MOVIE_LIBRARIES", false)
+
 	if config.PlexToken == "" {
 		fmt.Println("❌ Please set PLEX_TOKEN environment variable")
 		os.Exit(1)
@@ -182,29 +184,44 @@ func main() {
 		fmt.Printf("  📁 ID: %s - %s (%s)\n", lib.Key, lib.Title, lib.Type)
 	}
 
-	// Find the movies library
-	var moviesLibraryID string
+	var movieLibraries []Library
 	for _, lib := range libraries {
 		if lib.Type == "movie" {
-			moviesLibraryID = lib.Key
-			fmt.Printf("\n🎯 Using Movies library: %s (ID: %s)\n", lib.Title, lib.Key)
-			break
+			movieLibraries = append(movieLibraries, lib)
 		}
 	}
 
-	if moviesLibraryID == "" {
+	if len(movieLibraries) == 0 {
 		fmt.Println("❌ No movie library found!")
 		os.Exit(1)
 	}
 
-	// Update the config to use the found library ID
-	config.LibraryID = moviesLibraryID
+	if processAllMovieLibraries {
+		fmt.Printf("\n🎯 Processing all %d movie libraries\n", len(movieLibraries))
+	} else {
+		fmt.Printf("\n🎯 Using Movies library: %s (ID: %s)\n", movieLibraries[0].Title, movieLibraries[0].Key)
+	}
 
 	// Start the periodic processing
 	fmt.Println("\n🔄 Starting periodic movie processing...")
 
+	processFunc := func() {
+		if processAllMovieLibraries {
+			for _, lib := range movieLibraries {
+				fmt.Printf("\n==============================\n")
+				fmt.Printf("🎬 Processing library: %s (ID: %s)\n", lib.Title, lib.Key)
+				libConfig := config
+				libConfig.LibraryID = lib.Key
+				processAllMovies(libConfig)
+			}
+		} else {
+			config.LibraryID = movieLibraries[0].Key
+			processAllMovies(config)
+		}
+	}
+
 	// Process immediately on start
-	processAllMovies(config)
+	processFunc()
 
 	// Set up timer for periodic processing
 	ticker := time.NewTicker(config.ProcessTimer)
@@ -214,7 +231,7 @@ func main() {
 		select {
 		case <-ticker.C:
 			fmt.Printf("\n⏰ Timer triggered - processing movies at %s\n", time.Now().Format("15:04:05"))
-			processAllMovies(config)
+			processFunc()
 		}
 	}
 }

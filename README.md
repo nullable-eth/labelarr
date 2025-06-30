@@ -20,9 +20,8 @@ Automatically sync TMDb movie keywords as Plex labels - A lightweight Go applica
 - Create custom dynamic filters for multiple labels that will update automatically when new movies are labeled:
 ![2](https://github.com/user-attachments/assets/23ab5d2c-9300-4560-a626-31ed836c583c)
 - Filter on the fly by a label:
- 
-![3](https://github.com/user-attachments/assets/886df494-83c5-4fff-862d-8f51152bd68c)
 
+![3](https://github.com/user-attachments/assets/886df494-83c5-4fff-862d-8f51152bd68c)
 
 ## 📋 Environment Variables
 
@@ -35,6 +34,7 @@ Automatically sync TMDb movie keywords as Plex labels - A lightweight Go applica
 | `TMDB_READ_ACCESS_TOKEN` | TMDb API Bearer token | - | **Yes** |
 | `PROCESS_TIMER` | Processing interval (e.g., `5m`, `1h`) | `5m` | No |
 | `LIBRARY_ID` | Plex library ID (auto-detected if not set) | - | No |
+| `PROCESS_ALL_MOVIE_LIBRARIES` | Process all movie libraries (set to `true` to enable) | `false` | No |
 
 ## 🔑 Getting API Keys
 
@@ -58,7 +58,7 @@ Automatically sync TMDb movie keywords as Plex labels - A lightweight Go applica
 
 ```bash
 docker run -d --name labelarr \
-  -e PLEX_SERVER=192.168.1.12 \
+  -e PLEX_SERVER=localhost \
   -e PLEX_PORT=32400 \
   -e PLEX_REQUIRES_HTTPS=true \
   -e PLEX_TOKEN=your_plex_token_here \
@@ -81,7 +81,7 @@ services:
     container_name: labelarr
     restart: unless-stopped
     environment:
-      - PLEX_SERVER=192.168.1.12
+      - PLEX_SERVER=localhost
       - PLEX_PORT=32400
       - PLEX_REQUIRES_HTTPS=true
       - PLEX_TOKEN=your_plex_token_here
@@ -90,6 +90,35 @@ services:
 ```
 
 3. Run: `docker-compose up -d`
+
+## 🐳 Docker Compose: Ensuring Labelarr Waits for Plex
+
+To avoid Labelarr startup errors when Plex is not yet ready, use Docker Compose's `depends_on` with `condition: service_healthy` and add a healthcheck to your Plex service. This ensures Labelarr only starts after Plex is healthy.
+
+Example:
+
+```yaml
+services:
+  plex:
+    image: plexinc/pms-docker:latest
+    container_name: plex
+    # ... other config ...
+    healthcheck:
+      test: curl --connect-timeout 15 --silent --show-error --fail http://localhost:32400/identity
+      interval: 1m00s
+      timeout: 15s
+      retries: 3
+      start_period: 1m00s
+  labelarr:
+    image: nullableeth/labelarr:latest
+    container_name: labelarr
+    depends_on:
+      plex:
+        condition: service_healthy
+    # ... other config ...
+```
+
+This setup prevents Labelarr from logging connection errors if Plex is still starting up.
 
 ## 🛠️ Local Development
 
@@ -109,7 +138,7 @@ cd labelarr
 go mod tidy
 
 # Set environment variables
-export PLEX_SERVER=192.168.1.12
+export PLEX_SERVER=localhost
 export PLEX_PORT=32400
 export PLEX_TOKEN=your_plex_token
 export TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
@@ -122,7 +151,7 @@ go run main.go
 
 ```bash
 # Build for current platform
-go build -olabelarr main.go
+go build -o labelarr main.go
 
 # Build for Linux (Docker)
 CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o labelarr main.go
@@ -164,7 +193,6 @@ The application can find TMDb IDs from multiple sources and supports flexible fo
 Example file paths:
 
 ```
-/data/Movies/Zeitgeist - Moving Forward (2011) {tmdb-54293}/movie.mp4
 /movies/The Matrix (1999) [tmdb-603]/The Matrix.mkv
 /movies/Inception (2010) (tmdb:27205)/Inception.mkv
 /movies/Avatar (2009) tmdb;19995/Avatar.mkv
