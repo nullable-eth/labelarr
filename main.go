@@ -35,11 +35,16 @@ type Movie struct {
 	Title     string       `json:"title"`
 	Year      int          `json:"year"`
 	Label     []Label      `json:"Label,omitempty"`
+	Genre     []Genre      `json:"Genre,omitempty"`
 	Guid      FlexibleGuid `json:"Guid,omitempty"`
 	Media     []Media      `json:"Media,omitempty"`
 }
 
 type Label struct {
+	Tag string `json:"tag"`
+}
+
+type Genre struct {
 	Tag string `json:"tag"`
 }
 
@@ -205,6 +210,13 @@ func main() {
 	// Start the periodic processing
 	fmt.Println("\n🔄 Starting periodic movie processing...")
 
+	// Add UPDATE_FIELD env variable
+	updateField := getEnvWithDefault("UPDATE_FIELD", "labels")
+	if updateField != "labels" && updateField != "genre" {
+		fmt.Println("❌ UPDATE_FIELD must be 'labels' or 'genre'")
+		os.Exit(1)
+	}
+
 	processFunc := func() {
 		if processAllMovieLibraries {
 			for _, lib := range movieLibraries {
@@ -212,11 +224,11 @@ func main() {
 				fmt.Printf("🎬 Processing library: %s (ID: %s)\n", lib.Title, lib.Key)
 				libConfig := config
 				libConfig.LibraryID = lib.Key
-				processAllMovies(libConfig)
+				processAllMovies(libConfig, updateField)
 			}
 		} else {
 			config.LibraryID = movieLibraries[0].Key
-			processAllMovies(config)
+			processAllMovies(config, updateField)
 		}
 	}
 
@@ -236,7 +248,7 @@ func main() {
 	}
 }
 
-func processAllMovies(config Config) {
+func processAllMovies(config Config, updateField string) {
 	fmt.Println("\n📋 Fetching all movies from library...")
 	movies, err := getMoviesFromLibrary(config)
 	if err != nil {
@@ -257,73 +269,71 @@ func processAllMovies(config Config) {
 	skippedMovies := 0
 
 	for i, movie := range movies {
-		// Check if movie was already processed
 		processed, exists := processedMovies[movie.RatingKey]
 		if exists && processed.KeywordsSynced {
 			skippedMovies++
 			continue
 		}
 
-		// Extract TMDb ID from movie first (before any output)
 		tmdbID := extractTMDbID(movie)
 		if tmdbID == "" {
 			fmt.Printf("⚠️ No TMDb ID found for movie: %s\n", movie.Title)
 			continue
 		}
 
-		// Get TMDb keywords
 		keywords, err := getTMDbKeywords(config, tmdbID)
 		if err != nil {
 			fmt.Printf("❌ Error fetching TMDb keywords for %s: %v\n", movie.Title, err)
 			continue
 		}
 
-		// Fetch detailed movie information to get current labels
 		movieDetails, err := getMovieDetails(config, movie.RatingKey)
 		if err != nil {
 			fmt.Printf("❌ Error fetching movie details for %s: %v\n", movie.Title, err)
 			continue
 		}
 
-		// Get current movie labels from detailed fetch
-		currentLabels := make([]string, len(movieDetails.Label))
-		for j, label := range movieDetails.Label {
-			currentLabels[j] = label.Tag
+		var currentValues []string
+		if updateField == "labels" {
+			currentValues = make([]string, len(movieDetails.Label))
+			for j, label := range movieDetails.Label {
+				currentValues[j] = label.Tag
+			}
+		} else {
+			currentValues = make([]string, len(movieDetails.Genre))
+			for j, genre := range movieDetails.Genre {
+				currentValues[j] = genre.Tag
+			}
 		}
 
-		// Check if all keywords already exist as labels (case-insensitive)
-		currentLabelsMap := make(map[string]bool)
-		for _, label := range currentLabels {
-			currentLabelsMap[strings.ToLower(label)] = true
+		currentValuesMap := make(map[string]bool)
+		for _, val := range currentValues {
+			currentValuesMap[strings.ToLower(val)] = true
 		}
 
 		allKeywordsExist := true
 		for _, keyword := range keywords {
-			if !currentLabelsMap[strings.ToLower(keyword)] {
+			if !currentValuesMap[strings.ToLower(keyword)] {
 				allKeywordsExist = false
 				break
 			}
 		}
 
-		// If all keywords already exist, skip silently
 		if allKeywordsExist {
 			skippedMovies++
 			continue
 		}
 
-		// Only show processing output for movies that need updates
 		fmt.Printf("\n🎬 Processing movie %d/%d: %s (%d)\n", i+1, len(movies), movie.Title, movie.Year)
 		fmt.Printf("🔑 TMDb ID: %s (%s)\n", tmdbID, movie.Title)
 		fmt.Printf("🏷️ Found %d TMDb keywords\n", len(keywords))
 
-		// Sync labels with keywords
-		err = syncMovieLabelsWithKeywords(config, movie.RatingKey, currentLabels, keywords)
+		err = syncMovieFieldWithKeywords(config, movie.RatingKey, currentValues, keywords, updateField)
 		if err != nil {
-			fmt.Printf("❌ Error syncing labels: %v\n", err)
+			fmt.Printf("❌ Error syncing %s: %v\n", updateField, err)
 			continue
 		}
 
-		// Update processed movies dictionary
 		processedMovies[movie.RatingKey] = &ProcessedMovie{
 			RatingKey:      movie.RatingKey,
 			Title:          movie.Title,
@@ -339,8 +349,6 @@ func processAllMovies(config Config) {
 		}
 
 		fmt.Printf("✅ Successfully processed: %s\n", movie.Title)
-
-		// Small delay to avoid overwhelming the APIs
 		time.Sleep(500 * time.Millisecond)
 	}
 
@@ -456,50 +464,50 @@ func getTMDbKeywords(config Config, tmdbID string) ([]string, error) {
 	return keywords, nil
 }
 
-func syncMovieLabelsWithKeywords(config Config, movieID string, currentLabels []string, keywords []string) error {
-	// Convert current labels to a map for easy lookup (case-insensitive)
-	currentLabelsMap := make(map[string]bool)
-	for _, label := range currentLabels {
-		currentLabelsMap[strings.ToLower(label)] = true
+func syncMovieFieldWithKeywords(config Config, movieID string, currentValues []string, keywords []string, updateField string) error {
+	currentValuesMap := make(map[string]bool)
+	for _, val := range currentValues {
+		currentValuesMap[strings.ToLower(val)] = true
 	}
 
-	// Find keywords to add (keywords not in current labels, case-insensitive comparison)
-	labelsToAdd := make([]string, 0)
+	valuesToAdd := make([]string, 0)
 	for _, keyword := range keywords {
-		if !currentLabelsMap[strings.ToLower(keyword)] {
-			labelsToAdd = append(labelsToAdd, keyword)
+		if !currentValuesMap[strings.ToLower(keyword)] {
+			valuesToAdd = append(valuesToAdd, keyword)
 		}
 	}
 
-	fmt.Printf("  📝 Labels to add: %v\n", labelsToAdd)
-	fmt.Printf("  🏷️ Existing labels: %v\n", currentLabels)
+	fmt.Printf("  📝 %s to add: %v\n", strings.Title(updateField), valuesToAdd)
+	fmt.Printf("  🏷️ Existing %s: %v\n", updateField, currentValues)
 
-	// Merge existing labels with new keywords
-	allLabels := make([]string, 0, len(currentLabels)+len(labelsToAdd))
-	allLabels = append(allLabels, currentLabels...)
-	allLabels = append(allLabels, labelsToAdd...)
+	allValues := make([]string, 0, len(currentValues)+len(valuesToAdd))
+	allValues = append(allValues, currentValues...)
+	allValues = append(allValues, valuesToAdd...)
 
-	// Update movie labels with combined list
-	return updateMovieLabelsWithKeywords(config, movieID, allLabels)
+	return updateMovieFieldWithKeywords(config, movieID, allValues, updateField)
 }
 
-func updateMovieLabelsWithKeywords(config Config, movieID string, keywords []string) error {
-	// Build the base URL path
+func updateMovieFieldWithKeywords(config Config, movieID string, keywords []string, updateField string) error {
 	basePath := fmt.Sprintf("/library/sections/%s/all?type=1&id=%s&includeExternalMedia=1", config.LibraryID, movieID)
 
-	// Add each keyword as a label parameter
-	for i, keyword := range keywords {
-		encodedKeyword := url.QueryEscape(keyword)
-		basePath += fmt.Sprintf("&label%%5B%d%%5D.tag.tag=%s", i, encodedKeyword)
+	if updateField == "labels" {
+		for i, keyword := range keywords {
+			encodedKeyword := url.QueryEscape(keyword)
+			basePath += fmt.Sprintf("&label%%5B%d%%5D.tag.tag=%s", i, encodedKeyword)
+		}
+		basePath += "&label.locked=1"
+	} else {
+		for i, keyword := range keywords {
+			encodedKeyword := url.QueryEscape(keyword)
+			basePath += fmt.Sprintf("&genre%%5B%d%%5D.tag.tag=%s", i, encodedKeyword)
+		}
+		basePath += "&genre.locked=1"
 	}
+	basePath += fmt.Sprintf("&X-Plex-Token=%s", config.PlexToken)
 
-	// Add label lock and token
-	basePath += fmt.Sprintf("&label.locked=1&X-Plex-Token=%s", config.PlexToken)
-
-	// Build the complete URL
 	updateURL := buildPlexURL(config, basePath)
 
-	fmt.Printf("  📤 Updating movie labels...\n")
+	fmt.Printf("  📤 Updating movie %s...\n", updateField)
 
 	req, err := http.NewRequest("PUT", updateURL, nil)
 	if err != nil {

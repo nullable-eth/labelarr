@@ -16,12 +16,12 @@ Automatically sync TMDb movie keywords as Plex labels - A lightweight Go applica
 - ⚙️ **Environment Configuration**: Fully configurable via environment variables
 - 🔒 **Protocol Flexibility**: Supports both HTTP and HTTPS Plex connections
 - Allows you to have TMBDB keywords as labels in Plex:
-![1](https://github.com/user-attachments/assets/914c5d32-1a90-4378-be3c-38679bc6263c)
+![1](example/labels.png)
 - Create custom dynamic filters for multiple labels that will update automatically when new movies are labeled:
-![2](https://github.com/user-attachments/assets/23ab5d2c-9300-4560-a626-31ed836c583c)
+![2](example/dynamic_filter.png)
 - Filter on the fly by a label:
 
-![3](https://github.com/user-attachments/assets/886df494-83c5-4fff-862d-8f51152bd68c)
+![3](example/filter.png)
 
 ## 📋 Environment Variables
 
@@ -35,6 +35,34 @@ Automatically sync TMDb movie keywords as Plex labels - A lightweight Go applica
 | `PROCESS_TIMER` | Processing interval (e.g., `5m`, `1h`) | `5m` | No |
 | `LIBRARY_ID` | Plex library ID (auto-detected if not set) | - | No |
 | `PROCESS_ALL_MOVIE_LIBRARIES` | Process all movie libraries (set to `true` to enable) | `false` | No |
+| `UPDATE_FIELD` | Field to update: `labels` (default) or `genre` | `labels` | No |
+
+## 🆕 UPDATE_FIELD: Sync as Labels or Genres
+
+You can control whether TMDb keywords are synced as Plex **labels** (default) or **genres** by setting the `UPDATE_FIELD` environment variable:
+
+- `UPDATE_FIELD=labels` (default): Syncs keywords as Plex labels (original behavior)
+- `UPDATE_FIELD=genre`: Syncs keywords as Plex genres
+
+The chosen field will be **locked** after update to prevent Plex from overwriting it.
+
+### Example Usage
+
+```bash
+docker run -d --name labelarr \
+  -e PLEX_SERVER=localhost \
+  -e PLEX_PORT=32400 \
+  -e PLEX_TOKEN=your_plex_token_here \
+  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
+  -e UPDATE_FIELD=genre \
+  nullableeth/labelarr:latest
+```
+
+#### Example: Genres Updated and Locked in Plex
+
+![Plex genres updated and locked by Labelarr](example/genre.png)
+
+*Genres updated and locked by Labelarr using `UPDATE_FIELD=genre`. The lock icon indicates the field is protected from automatic changes by Plex.*
 
 ## 🔑 Getting API Keys
 
@@ -50,7 +78,7 @@ Automatically sync TMDb movie keywords as Plex labels - A lightweight Go applica
 
 1. Visit [TMDb API Settings](https://www.themoviedb.org/settings/api)
 2. Create account and generate API key
-3. Use the **Bearer Token** (not the API key)
+3. Use the Read Access Token (not the API key)
 
 ## 🐳 Docker Deployment
 

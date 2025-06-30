@@ -37,6 +37,7 @@ docker run -d --name labelarr \
 | `PROCESS_TIMER`           | How often to scan (e.g., `5m`)     | `5m`, `10m`, `1h`, etc.                                                    |
 | `LIBRARY_ID`              | Plex library ID (auto-detected if not set) | See Library Selection Logic below                                          |
 | `PROCESS_ALL_MOVIE_LIBRARIES` | Process all movie libraries (set to `true` to enable) | `false` |
+| `UPDATE_FIELD`              | Field to update: `labels` (default) or `genre` | `labels` | No |
 
 ## Docker Compose Example
 
@@ -150,6 +151,27 @@ The application provides detailed logging including:
 - **GitHub**: [https://github.com/nullable-eth/Labelarr](https://github.com/nullable-eth/Labelarr)
 - **Issues**: Report bugs and feature requests
 - **Logs**: Check container logs for troubleshooting
+
+## 🆕 UPDATE_FIELD: Sync as Labels or Genres
+
+You can control whether TMDb keywords are synced as Plex **labels** (default) or **genres** by setting the `UPDATE_FIELD` environment variable:
+
+- `UPDATE_FIELD=labels` (default): Syncs keywords as Plex labels (original behavior)
+- `UPDATE_FIELD=genre`: Syncs keywords as Plex genres
+
+The chosen field will be **locked** after update to prevent Plex from overwriting it.
+
+### Example Usage
+
+```bash
+docker run -d --name labelarr \
+  -e PLEX_SERVER=localhost \
+  -e PLEX_PORT=32400 \
+  -e PLEX_TOKEN=your_plex_token_here \
+  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
+  -e UPDATE_FIELD=genre \
+  nullableeth/labelarr:latest
+```
 
 ---
 
