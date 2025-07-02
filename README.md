@@ -5,406 +5,12 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/nullable-eth/labelarr?style=flat-square)](https://golang.org/)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/nullable-eth/labelarr/docker-publish.yml?branch=main&style=flat-square)](https://github.com/nullable-eth/labelarr/actions)
 
-**Automatically sync TMDb keywords as Plex labels or genres for both movies and TV shows**  
-A lightweight Go application that bridges your Plex media libraries with The Movie Database, adding relevant keywords as searchable labels or genres.
-
-## What it does
-
-Labelarr continuously monitors your Plex movie and TV show libraries and automatically:
-
-- 🔍 Detects TMDb IDs from Plex metadata or file paths (e.g. `{tmdb-12345}`, `[tmdb:12345]`, `(tmdb;12345)`, etc.)
-- 📥 Fetches movie and TV show keywords from TMDb API
-- 🏷️ Adds keywords as Plex labels or genres (preserves existing values)
-- 📊 Tracks processed media to avoid duplicates
-- ⏰ Runs on a configurable timer (default: 5 minutes)
-
-## ✅ Features
-
-- ✅ **Non-destructive**: Never removes existing labels or genres
-- ✅ **Smart detection**: Multiple TMDb ID sources (metadata and file paths)
-- ✅ **Progress tracking**: Remembers processed movies to avoid re-processing
-- ✅ **Lightweight**: ~10MB Alpine-based container
-- ✅ **Secure**: Runs as non-root user
-- ✅ **Auto-retry**: Handles API rate limits gracefully
-- ✅ **Protocol flexibility**: Supports both HTTP and HTTPS Plex connections
-- ✅ **Periodic Processing**: Automatically processes movies and TV shows on a configurable timer
-- ✅ **Movie Support**: Full movie library processing with TMDb integration
-- ✅ **TV Show Support**: Complete TV show library processing with TMDb integration
-- ✅ **Smart Label/Genre Management**: Adds TMDb keywords as Plex labels or genres without removing existing values
-- ✅ **Flexible TMDb ID Detection**: Extracts TMDb IDs from Plex metadata or file paths
-- ✅ **Docker Ready**: Containerized for easy deployment
-- ✅ **Environment Configuration**: Fully configurable via environment variables
-
-### Examples
-
-- Allows you to have TMDB keywords as labels in Plex:
-
-  ![1](example/labels.png)
-
-- Create custom dynamic filters for multiple labels that will update automatically when new movies are labeled:
-
-  ![2](example/dynamic_filter.png)
-
-- Filter on the fly by a label:
-
-  ![3](example/filter.png)
+**Automatically sync TMDb keywords as Plex labels or genres for movies and TV shows**  
+Lightweight Docker container that bridges Plex with The Movie Database, adding searchable keywords to your media.
 
 ## 🚀 Quick Start
 
-```bash
-docker run -d --name labelarr \
-  -e PLEX_SERVER=localhost \
-  -e PLEX_PORT=32400 \
-  -e PLEX_REQUIRES_HTTPS=true \
-  -e PLEX_TOKEN=your_plex_token_here \
-  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
-  -e PROCESS_TIMER=1h \
-  -e MOVIE_PROCESS_ALL=true \
-  -e TV_PROCESS_ALL=true \
-  ghcr.io/nullable-eth/labelarr:latest
-```
-
-## 📋 Environment Variables
-
-| Variable | Description | Default | Required | How to Get |
-|----------|-------------|---------|----------|------------|
-| `PLEX_SERVER` | Plex server IP/hostname | - | **Yes** | Your Plex server address |
-| `PLEX_PORT` | Plex server port | - | **Yes** | Usually `32400` |
-| `PLEX_REQUIRES_HTTPS` | Use HTTPS for Plex connection | `true` | No | `true`/`false` |
-| `PLEX_TOKEN` | Plex authentication token | - | **Yes** | Plex Web App → F12 → Network tab → Look for `X-Plex-Token` in headers |
-| `TMDB_READ_ACCESS_TOKEN` | TMDb API Bearer token | - | **Yes** | [TMDb API Settings](https://www.themoviedb.org/settings/api) |
-| `PROCESS_TIMER` | Processing interval (e.g., `5m`, `1h`) | `1h` | No | `5m`, `10m`, `1h`, etc. |
-| `MOVIE_LIBRARY_ID` | Specific movie library ID to process | - | No | See Finding Library IDs below |
-| `TV_LIBRARY_ID` | Specific TV library ID to process | - | No | See Finding Library IDs below |
-| `MOVIE_PROCESS_ALL` | Process all movie libraries (set to `true` to enable) | `false` | No | `true`/`false` |
-| `TV_PROCESS_ALL` | Process all TV libraries (set to `true` to enable) | `false` | No | `true`/`false` |
-| `UPDATE_FIELD` | Field to update: `label` (default) or `genre` | `label` | No | `label` or `genre` |
-| `REMOVE` | Remove keywords mode: `lock` or `unlock` (runs once and exits) | - | No | `lock`, `unlock`, or leave empty |
-
-## 🔍 Finding Library IDs
-
-To find your library's ID, open your Plex web app, click on the desired library, and look for `source=` in the URL:
-
-- `https://app.plex.tv/desktop/#!/media/xxxx/com.plexapp.plugins.library?source=1`
-- Here, the library ID is `1`
-
-Alternatively, you can use the library processing options:
-
-- Set `MOVIE_PROCESS_ALL=true` to process all movie libraries
-- Set `TV_PROCESS_ALL=true` to process all TV libraries
-
-## 📚 Library Selection Logic
-
-**⚠️ IMPORTANT CHANGE**: Starting with this version, explicit library configuration is required. The application will **NOT** auto-select libraries by default.
-
-### Movie Libraries
-
-- **`MOVIE_LIBRARY_ID=1`**: Process only the specific movie library with ID 1
-- **`MOVIE_PROCESS_ALL=true`**: Process all movie libraries found in Plex
-- **Neither set**: Movies are **NOT** processed (no default selection)
-
-### TV Libraries  
-
-- **`TV_LIBRARY_ID=2`**: Process only the specific TV library with ID 2
-- **`TV_PROCESS_ALL=true`**: Process all TV libraries found in Plex
-- **Neither set**: TV shows are **NOT** processed
-
-### Why This Changed
-
-Previously, the application would auto-select the first movie library if no movie library ID was specified. With the addition of TV show support, users might want to process only TV shows without movies, or vice versa. The auto-selection behavior would force movie processing even when users only wanted TV shows processed.
-
-## 🔄 Changes from Previous Version
-
-This version includes significant enhancements while maintaining backward compatibility:
-
-### ✨ New Features
-
-- **📺 TV Show Support**: Complete TV show library processing with TMDb keyword integration
-- **🎯 Explicit Library Selection**: Must specify which libraries to process (no more auto-selection)
-- **🔇 Reduced Verbosity**: Much quieter processing output - only shows new items and errors
-- **📊 Better Progress Tracking**: Enhanced summary reporting for both movies and TV shows
-
-### 🔄 Behavioral Changes
-
-- **No Default Library Selection**: Application requires explicit configuration of which libraries to process
-- **Backward Compatible**: All existing environment variables work the same way
-- **Silent Processing**: Items already processed or with existing keywords are handled silently
-- **Enhanced Error Handling**: Better error reporting for API issues and processing failures
-
-### 📋 Migration Guide
-
-If you were relying on auto-selection of the first movie library, you now need to explicitly configure which libraries to process:
-
-- `MOVIE_LIBRARY_ID=<your_movie_library_id>` for a specific movie library, or
-- `MOVIE_PROCESS_ALL=true` to process all movie libraries
-- `TV_LIBRARY_ID=<your_tv_library_id>` for a specific TV library, or  
-- `TV_PROCESS_ALL=true` to process all TV libraries
-
-**Example using the "process all" approach:**
-
-```bash
-# Old (auto-selected first movie library)
-docker run -d --name labelarr \
-  -e PLEX_SERVER=localhost \
-  -e PLEX_TOKEN=... \
-  docker.io/nullableeth/labelarr:latest
-
-# New (explicit library selection required)
-docker run -d --name labelarr \
-  -e PLEX_SERVER=localhost \
-  -e PLEX_TOKEN=... \
-  -e MOVIE_PROCESS_ALL=true \
-  -e TV_PROCESS_ALL=true \
-  ghcr.io/nullable-eth/labelarr:latest
-```
-
-Without explicit library configuration, the application will fetch all libraries but process none, essentially doing nothing.
-
-## 🆕 UPDATE_FIELD: Sync as Labels or Genres
-
-You can control whether TMDb keywords are synced as Plex **labels** (default) or **genres** by setting the `UPDATE_FIELD` environment variable:
-
-- `UPDATE_FIELD=label` (default): Syncs keywords as Plex labels (original behavior)
-- `UPDATE_FIELD=genre`: Syncs keywords as Plex genres
-
-The chosen field will be **locked** after update to prevent Plex from overwriting it.
-
-### Example Usage
-
-```bash
-docker run -d --name labelarr \
-  -e PLEX_SERVER=localhost \
-  -e PLEX_PORT=32400 \
-  -e PLEX_TOKEN=your_plex_token_here \
-  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
-  -e MOVIE_PROCESS_ALL=true \
-  -e TV_PROCESS_ALL=true \
-  -e UPDATE_FIELD=genre \
-  ghcr.io/nullable-eth/labelarr:latest
-```
-
-#### Example: Genres Updated and Locked in Plex
-
-![Plex genres updated and locked by Labelarr](example/genre.png)
-
-*Genres updated and locked by Labelarr using `UPDATE_FIELD=genre`. The lock icon indicates the field is protected from automatic changes by Plex.*
-
-## 🗑️ REMOVE: Clean Up TMDb Keywords
-
-The `REMOVE` environment variable allows you to remove **only** TMDb keywords from the selected field while preserving all other values (like custom labels for sharing). When `REMOVE` is set, the tool runs once and exits.
-
-### Remove Options
-
-- `REMOVE=lock`: Removes TMDb keywords and **locks** the field to prevent Plex from updating it
-- `REMOVE=unlock`: Removes TMDb keywords and **unlocks** the field so metadata refresh can set new values
-
-### When to Use Each Option
-
-**Use `REMOVE=lock`:**
-
-- When you want to permanently remove TMDb keywords but keep custom labels/genres
-- For users who use labels for sharing or other purposes and don't want Plex to overwrite them
-- When you want manual control over the field content
-
-**Use `REMOVE=unlock`:**
-
-- When you want to clean up and let Plex refresh metadata naturally
-- To reset the field to Plex's default metadata values
-- When switching from TMDb keywords back to standard Plex metadata
-
-### Example Usage
-
-#### Remove TMDb keywords from labels and lock the field
-
-```bash
-docker run --rm \
-  -e PLEX_SERVER=localhost \
-  -e PLEX_PORT=32400 \
-  -e PLEX_TOKEN=your_plex_token_here \
-  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
-  -e UPDATE_FIELD=label \
-  -e MOVIE_PROCESS_ALL=true \
-  -e TV_PROCESS_ALL=true \
-  -e REMOVE=lock \
-  ghcr.io/nullable-eth/labelarr:latest
-```
-
-#### Remove TMDb keywords from genres and unlock for metadata refresh
-
-```bash
-docker run --rm \
-  -e PLEX_SERVER=localhost \
-  -e PLEX_PORT=32400 \
-  -e PLEX_TOKEN=your_plex_token_here \
-  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
-  -e UPDATE_FIELD=genre \
-  -e MOVIE_PROCESS_ALL=true \
-  -e TV_PROCESS_ALL=true \
-  -e REMOVE=unlock \
-  ghcr.io/nullable-eth/labelarr:latest
-```
-
-**Note:** The `--rm` flag automatically removes the container after completion since this is a one-time operation.
-
-## 🔒 Understanding Field Locking & Plex Metadata
-
-Field locking is a crucial concept in Plex that determines whether Plex can automatically update metadata fields during library scans and metadata refreshes. Understanding how this works with Labelarr is essential for managing your media library effectively.
-
-### 🔐 What is Field Locking?
-
-When a field is **locked** in Plex:
-
-- ✅ The field value is **protected** from automatic changes
-- ✅ Plex **cannot** overwrite the field during metadata refresh
-- ✅ Manual edits in Plex UI are still possible
-- ✅ External tools (like Labelarr) can still modify the field
-- 🔒 A **lock icon** appears next to the field in Plex UI
-
-When a field is **unlocked** in Plex:
-
-- 🔄 Plex **can** update the field during metadata refresh
-- 🔄 New metadata agents can overwrite existing values
-- 🔄 "Refresh Metadata" will update the field with fresh data
-- 🔓 **No lock icon** appears in Plex UI
-
-### 🎯 Labelarr's Field Locking Behavior
-
-#### **During Normal Operation (Adding Keywords)**
-
-Labelarr **always locks** the field after adding TMDb keywords to prevent Plex from accidentally removing them during future metadata refreshes.
-
-#### **During Remove Operation**
-
-- `REMOVE=lock`: Removes TMDb keywords but **keeps the field locked**
-- `REMOVE=unlock`: Removes TMDb keywords and **unlocks the field**
-
-### 📋 Practical Examples
-
-#### **Scenario 1: Mixed Content Management**
-
-You have movies with:
-
-- 🏷️ TMDb keywords: `action`, `thriller`, `heist`  
-- 🏷️ Custom labels: `watched`, `favorites`, `4k-remaster`
-
-**Using `REMOVE=lock`:**
-
-- ✅ Removes only: `action`, `thriller`, `heist`
-- ✅ Keeps: `watched`, `favorites`, `4k-remaster`
-- 🔒 Field remains **locked** - Plex won't add new genres
-- 💡 **Best for**: Users who manually manage labels alongside TMDb keywords
-
-**Using `REMOVE=unlock`:**
-
-- ✅ Removes only: `action`, `thriller`, `heist`  
-- ✅ Keeps: `watched`, `favorites`, `4k-remaster`
-- 🔓 Field becomes **unlocked** - Plex can add new metadata
-- 💡 **Best for**: Users who want Plex to manage metadata going forward
-
-#### **Scenario 2: Complete Reset**
-
-You want to completely reset your library's metadata:
-
-1. **Step 1**: `REMOVE=unlock` - Removes TMDb keywords and unlocks fields
-2. **Step 2**: Use Plex's "Refresh All Metadata" to restore original metadata
-3. **Result**: Clean slate with Plex's default metadata
-
-### 🛡️ Best Practices
-
-#### **Use Locking When:**
-
-- ✅ You manually curate labels/genres
-- ✅ You use labels for organization (playlists, collections, etc.)
-- ✅ You want to prevent accidental metadata overwrites
-- ✅ You share your library and need consistent metadata
-
-#### **Use Unlocking When:**
-
-- ✅ You want to return to Plex's default metadata behavior
-- ✅ You're switching to a different metadata agent
-- ✅ You want Plex to automatically update metadata in the future
-- ✅ You're troubleshooting metadata issues
-
-### 🔍 Visual Indicators
-
-In Plex Web UI, you'll see:
-
-- 🔒 **Lock icon** = Field is locked (protected from automatic updates)
-- 🔓 **No lock icon** = Field is unlocked (can be updated by Plex)
-
-![Example of locked genre field in Plex](example/genre.png)
-
-*The lock icon indicates this genre field is protected from automatic changes*
-
-## 🔑 Getting API Keys
-
-### Plex Token
-
-1. Open Plex Web App in browser
-2. Press F12 → Network tab
-3. Refresh the page
-4. Find any request with `X-Plex-Token` in headers
-5. Copy the token value
-
-### TMDb API Key
-
-1. Visit [TMDb API Settings](https://www.themoviedb.org/settings/api)
-2. Create account and generate API key
-3. Use the Read Access Token (not the API key)
-
-## 🐳 Docker Deployment
-
-### Quick Start
-
-```bash
-docker run -d --name labelarr \
-  -e PLEX_SERVER=localhost \
-  -e PLEX_PORT=32400 \
-  -e PLEX_REQUIRES_HTTPS=true \
-  -e PLEX_TOKEN=your_plex_token_here \
-  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
-  -e MOVIE_PROCESS_ALL=true \
-  -e TV_PROCESS_ALL=true \
-  -e PROCESS_TIMER=1h \
-  ghcr.io/nullable-eth/labelarr:latest
-```
-
-### Images Available
-
-The application is automatically published to GitHub Container Registry (GHCR) with multiple tags:
-
-- `ghcr.io/nullable-eth/labelarr:latest` - Latest stable release
-- `ghcr.io/nullable-eth/labelarr:v1.0.x` - Specific version releases
-- `ghcr.io/nullable-eth/labelarr:1.0.x` - Auto-incrementing versions from main branch
-
-### 🤖 Automated Publishing
-
-This project uses GitHub Actions to automatically build and publish Docker images:
-
-#### **Automatic Releases**
-
-- 🔄 **Auto-versioning**: Semantic versioning based on commit messages
-  - `feat:` or `feature:` → Minor version bump (v1.1.0)
-  - `BREAKING CHANGE` or `!:` → Major version bump (v2.0.0)
-  - Other commits → Patch version bump (v1.0.1)
-- 📦 **Multi-architecture**: Builds for `linux/amd64` and `linux/arm64`
-- 🏷️ **Smart tagging**: Creates multiple tags including `latest`, version-specific, and date-based tags
-- 📋 **Release notes**: Automatically generates changelog from commits
-
-#### **Image Information**
-
-All published images include:
-
-- ✅ Security scanning via GitHub's built-in tools
-- ✅ Multi-platform support (AMD64 + ARM64)
-- ✅ Minimal Alpine Linux base (~10MB)
-- ✅ Non-root user execution
-- ✅ Build caching for faster builds
-
-### Docker Compose
-
-1. Download the `docker-compose.yml` file from this repository
-2. Update environment variables with your credentials:
+### Docker Compose (Recommended)
 
 ```yaml
 version: '3.8'
@@ -415,87 +21,118 @@ services:
     container_name: labelarr
     restart: unless-stopped
     environment:
+      # Required - Get from Plex Web (F12 → Network → X-Plex-Token)
+      - PLEX_TOKEN=your_plex_token_here
+      # Required - Get from https://www.themoviedb.org/settings/api
+      - TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
+      # Required - Your Plex server details
       - PLEX_SERVER=localhost
       - PLEX_PORT=32400
       - PLEX_REQUIRES_HTTPS=true
-      - PLEX_TOKEN=your_plex_token_here
-      - TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
+      # Process all libraries (recommended for first-time users)
       - MOVIE_PROCESS_ALL=true
       - TV_PROCESS_ALL=true
+      # Optional settings
       - PROCESS_TIMER=1h
+      - UPDATE_FIELD=label  # or 'genre'
 ```
 
-3. Run: `docker-compose up -d`
+**Run:** `docker-compose up -d`
 
-## 🐳 Docker Compose: Ensuring Labelarr Waits for Plex
+### What it does
 
-To avoid Labelarr startup errors when Plex is not yet ready, use Docker Compose's `depends_on` with `condition: service_healthy` and add a healthcheck to your Plex service. This ensures Labelarr only starts after Plex is healthy.
+✅ **Detects TMDb IDs** from Plex metadata or file paths (e.g., `{tmdb-12345}`)  
+✅ **Fetches keywords** from TMDb API for movies and TV shows  
+✅ **Adds as Plex labels/genres** - never removes existing values  
+✅ **Runs automatically** on configurable timer (default: 1 hour)  
+✅ **Multi-architecture** support (AMD64 + ARM64)
 
-Example:
+---
+
+<details id="examples-in-plex">
+<summary><h3 style="margin: 0; display: inline;">📸 Examples in Plex</h3></summary>
+
+![Labels](example/labels.png) ![Dynamic Filters](example/dynamic_filter.png) ![Filter](example/filter.png)
+
+</details>
+
+<details id="docker-run-command">
+<summary><h3 style="margin: 0; display: inline;">🐳 Alternative: Docker Run Command</h3></summary>
+
+```bash
+docker run -d --name labelarr \
+  -e PLEX_TOKEN=your_plex_token_here \
+  -e TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token \
+  -e PLEX_SERVER=localhost -e PLEX_PORT=32400 -e PLEX_REQUIRES_HTTPS=true \
+  -e MOVIE_PROCESS_ALL=true -e TV_PROCESS_ALL=true \
+  ghcr.io/nullable-eth/labelarr:latest
+```
+
+</details>
+
+<details id="plex-container-setup">
+<summary><h3 style="margin: 0; display: inline;">🐳 Advanced: Running with Plex Container Ensuring Labelarr Waits for Plex</h3></summary>
+To avoid Labelarr startup errors when Plex is not yet ready, use Docker Compose's depends_on with condition: service_healthy and add a healthcheck to your Plex service. This ensures Labelarr only starts after Plex is healthy.
 
 ```yaml
+version: '3.8'
 services:
   plex:
     image: plexinc/pms-docker:latest
     container_name: plex
-    # ... other config ...
+    # ... your plex configuration ...
     healthcheck:
       test: curl --connect-timeout 15 --silent --show-error --fail http://localhost:32400/identity
       interval: 1m00s
       timeout: 15s
       retries: 3
       start_period: 1m00s
+
   labelarr:
     image: ghcr.io/nullable-eth/labelarr:latest
     container_name: labelarr
+    restart: unless-stopped
     depends_on:
       plex:
         condition: service_healthy
-    # ... other config ...
+    environment:
+      - PLEX_SERVER=localhost
+      - PLEX_PORT=32400
+      - PLEX_REQUIRES_HTTPS=false
+      - PLEX_TOKEN=your_plex_token_here
+      - TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
+      - MOVIE_PROCESS_ALL=true
+      - TV_PROCESS_ALL=true
 ```
 
-This setup prevents Labelarr from logging connection errors if Plex is still starting up.
+</details>
 
-## 🛠️ Local Development
+<details id="environment-variables">
+<summary><h3 style="margin: 0; display: inline;">📋 Environment Variables</h3></summary>
 
-### Prerequisites
+**Required Settings:**
 
-- Go 1.23+
-- Git
+- `PLEX_TOKEN` - Get from Plex Web (F12 → Network → X-Plex-Token)
+- `TMDB_READ_ACCESS_TOKEN` - Get from [TMDb API Settings](https://www.themoviedb.org/settings/api)
+- `PLEX_SERVER` - Your Plex server address (e.g., `localhost`)
+- `PLEX_PORT` - Usually `32400`
 
-### Build and Run
+**Library Selection** (choose one approach):
 
-```bash
-# Clone the repository
-git clone https://github.com/nullable-eth/labelarr.git
-cd labelarr
+- `MOVIE_PROCESS_ALL=true` + `TV_PROCESS_ALL=true` - Process all libraries (recommended)
+- `MOVIE_LIBRARY_ID=1` + `TV_LIBRARY_ID=2` - Process specific libraries only
 
-# Initialize Go modules
-go mod tidy
+**Optional Settings:**
 
-# Set environment variables
-export PLEX_SERVER=localhost
-export PLEX_PORT=32400
-export PLEX_TOKEN=your_plex_token
-export TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
-export MOVIE_PROCESS_ALL=true
-export TV_PROCESS_ALL=true
+- `PLEX_REQUIRES_HTTPS=true` - Use HTTPS (default: `true`)
+- `UPDATE_FIELD=label` - Field to update: `label` or `genre` (default: `label`)
+- `PROCESS_TIMER=1h` - How often to run 24h, 5m, 2h30m etc. (default: `1h`)
+- `REMOVE=lock` - Clean mode: `lock` or `unlock` (runs once and exits)
 
-# Run the application
-go run main.go
-```
+</details>
 
-### Build Binary
-
-```bash
-# Build for current platform
-go build -o labelarr main.go
-
-# Build for Linux (Docker)
-CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o labelarr main.go
-```
-
-## 📖 How It Works
+<details id="how-it-works">
+<summary><h3 style="margin: 0; display: inline;">📖 How It Works</h3></summary>
 
 1. **Movie Processing**: Iterates through all movies in the library
 2. **TMDb ID Extraction**: Gets TMDb IDs from:
@@ -505,7 +142,10 @@ CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o labelarr main.go
 4. **Label Synchronization**: Adds new keywords as labels (preserves existing labels)
 5. **Progress Tracking**: Remembers processed movies to avoid re-processing
 
-## 🔍 TMDb ID Detection
+</details>
+
+<details id="tmdb-id-detection">
+<summary><h3 style="margin: 0; display: inline;">🔍 TMDb ID Detection</h3></summary>
 
 The application can find TMDb IDs from multiple sources and supports flexible formats:
 
@@ -541,27 +181,244 @@ Example file paths:
 /movies/ExtraSuffix tmdb-22222_extra/file.mkv
 ```
 
-## 📊 Monitoring
+</details>
 
-### View Logs
+<details id="advanced-configuration">
+<summary><h3 style="margin: 0; display: inline;">🔧 Advanced Configuration</h3></summary>
+
+<details id="finding-library-ids" style="margin-left: 20px;">
+<summary><strong>🔍 Finding Library IDs</strong></summary>
+
+To find your library's ID, open your Plex web app, click on the desired library, and look for `source=` in the URL:
+
+- `https://app.plex.tv/desktop/#!/media/xxxx/com.plexapp.plugins.library?source=1`
+- Here, the library ID is `1`
+
+**⚠️ Note**: Starting with this version, explicit library configuration is required. The application will **NOT** auto-select libraries by default.
+
+- `MOVIE_LIBRARY_ID=1` - Process only specific movie library
+- `MOVIE_PROCESS_ALL=true` - Process all movie libraries (recommended)
+- Neither set: Movies are **NOT** processed
+
+</details>
+
+<details id="labels-vs-genres" style="margin-left: 20px;">
+<summary><strong>🏷️ Labels vs Genres (UPDATE_FIELD)</strong></summary>
+
+Control whether TMDb keywords are synced as Plex **labels** (default) or **genres**:
+
+- `UPDATE_FIELD=label` (default): Syncs keywords as Plex labels
+- `UPDATE_FIELD=genre`: Syncs keywords as Plex genres
+
+The chosen field will be **locked** after update to prevent Plex from overwriting it.
+
+![Example of genres updated and locked by Labelarr](example/genre.png)
+
+</details>
+
+<details id="removing-keywords" style="margin-left: 20px;">
+<summary><strong>🗑️ Removing Keywords (REMOVE)</strong></summary>
+
+Remove **only** TMDb keywords while preserving custom labels/genres:
+
+- `REMOVE=lock`: Removes TMDb keywords and **locks** the field
+- `REMOVE=unlock`: Removes TMDb keywords and **unlocks** the field for Plex to update
+
+**Use lock when**: You manually manage labels/genres  
+**Use unlock when**: You want Plex to refresh metadata naturally
 
 ```bash
-# Docker logs
-docker logs labelarr
-
-# Follow logs
-docker logs -f labelarr
+# Example: Remove TMDb keywords from labels and lock field
+docker run --rm \
+  -e PLEX_TOKEN=... -e TMDB_READ_ACCESS_TOKEN=... \
+  -e REMOVE=lock -e UPDATE_FIELD=label \
+  -e MOVIE_PROCESS_ALL=true -e TV_PROCESS_ALL=true \
+  ghcr.io/nullable-eth/labelarr:latest
 ```
 
-### Log Output Includes
+</details>
 
-- Processing progress with movie counts
-- TMDb ID detection results
-- Label synchronization status
-- API error handling and retries
-- Detailed processing summaries
+<details id="field-locking-metadata" style="margin-left: 20px;">
+<summary><strong>🔒 Field Locking & Plex Metadata</strong></summary>
 
-## 🔧 Troubleshooting
+**Locked fields** in Plex are protected from automatic updates:
+
+- ✅ Labelarr can still modify them
+- ✅ Manual edits in Plex UI still work
+- ❌ Plex cannot overwrite during metadata refresh
+- 🔒 Lock icon appears in Plex UI
+
+**Unlocked fields** can be updated by Plex during metadata refreshes.
+
+**Labelarr's behavior:**
+
+- **Adding keywords**: Always locks the field
+- **Remove with lock**: Keeps field locked after removing keywords
+- **Remove with unlock**: Unlocks field for Plex to manage
+
+</details>
+
+<details id="migration" style="margin-left: 20px;">
+<summary><strong>🔄 Migration from Previous Version</strong></summary>
+
+**⚠️ Breaking Changes**: This version requires explicit library configuration.
+
+**Old behavior**: Auto-selected first movie library  
+**New behavior**: Must specify which libraries to process
+
+**Migration steps:**
+
+```bash
+# Before (auto-selected movies)
+-e LIBRARY_ID=1
+
+# After (explicit selection)
+-e MOVIE_LIBRARY_ID=1  # Specific library
+# OR
+-e MOVIE_PROCESS_ALL=true  # All movie libraries
+-e TV_PROCESS_ALL=true     # All TV libraries
+```
+
+**New Features:**
+
+- 📺 TV show support
+- 🔇 Reduced verbose output
+- 📊 Better progress tracking
+- 🛡️ Enhanced error handling
+
+</details>
+
+</details>
+
+<details id="field-locking">
+<summary><h3 style="margin: 0; display: inline;">🔒 Understanding Field Locking & Plex Metadata</h3></summary>
+
+Field locking is a crucial concept in Plex that determines whether Plex can automatically update metadata fields during library scans and metadata refreshes. Understanding how this works with Labelarr is essential for managing your media library effectively.
+
+<details id="what-is-field-locking" style="margin-left: 20px;">
+<summary><strong>🔐 What is Field Locking?</strong></summary>
+
+When a field is **locked** in Plex:
+
+- ✅ The field value is **protected** from automatic changes
+- ✅ Plex **cannot** overwrite the field during metadata refresh
+- ✅ Manual edits in Plex UI are still possible
+- ✅ External tools (like Labelarr) can still modify the field
+- 🔒 A **lock icon** appears next to the field in Plex UI
+
+When a field is **unlocked** in Plex:
+
+- 🔄 Plex **can** update the field during metadata refresh
+- 🔄 New metadata agents can overwrite existing values
+- 🔄 "Refresh Metadata" will update the field with fresh data
+- 🔓 **No lock icon** appears in Plex UI
+
+</details>
+
+<details id="labelarr-locking-behavior" style="margin-left: 20px;">
+<summary><strong>🎯 Labelarr's Field Locking Behavior</strong></summary>
+
+#### **During Normal Operation (Adding Keywords)**
+
+Labelarr **always locks** the field after adding TMDb keywords to prevent Plex from accidentally removing them during future metadata refreshes.
+
+#### **During Remove Operation**
+
+- `REMOVE=lock`: Removes TMDb keywords but **keeps the field locked**
+- `REMOVE=unlock`: Removes TMDb keywords and **unlocks the field**
+
+</details>
+
+<details id="practical-examples" style="margin-left: 20px;">
+<summary><strong>📋 Practical Examples</strong></summary>
+
+#### **Scenario 1: Mixed Content Management**
+
+You have movies with:
+
+- 🏷️ TMDb keywords: `action`, `thriller`, `heist`  
+- 🏷️ Custom labels: `watched`, `favorites`, `4k-remaster`
+
+**Using `REMOVE=lock`:**
+
+- ✅ Removes only: `action`, `thriller`, `heist`
+- ✅ Keeps: `watched`, `favorites`, `4k-remaster`
+- 🔒 Field remains **locked** - Plex won't add new genres
+- 💡 **Best for**: Users who manually manage labels alongside TMDb keywords
+
+**Using `REMOVE=unlock`:**
+
+- ✅ Removes only: `action`, `thriller`, `heist`  
+- ✅ Keeps: `watched`, `favorites`, `4k-remaster`
+- 🔓 Field becomes **unlocked** - Plex can add new metadata
+- 💡 **Best for**: Users who want Plex to manage metadata going forward
+
+#### **Scenario 2: Complete Reset**
+
+You want to completely reset your library's metadata:
+
+1. **Step 1**: `REMOVE=unlock` - Removes TMDb keywords and unlocks fields
+2. **Step 2**: Use Plex's "Refresh All Metadata" to restore original metadata
+3. **Result**: Clean slate with Plex's default metadata
+
+</details>
+
+<details id="best-practices" style="margin-left: 20px;">
+<summary><strong>🛡️ Best Practices</strong></summary>
+
+#### **Use Locking When:**
+
+- ✅ You manually curate labels/genres
+- ✅ You use labels for organization (playlists, collections, etc.)
+- ✅ You want to prevent accidental metadata overwrites
+- ✅ You share your library and need consistent metadata
+
+#### **Use Unlocking When:**
+
+- ✅ You want to return to Plex's default metadata behavior
+- ✅ You're switching to a different metadata agent
+- ✅ You want Plex to automatically update metadata in the future
+- ✅ You're troubleshooting metadata issues
+
+</details>
+
+<details id="visual-indicators" style="margin-left: 20px;">
+<summary><strong>🔍 Visual Indicators</strong></summary>
+
+In Plex Web UI, you'll see:
+
+- 🔒 **Lock icon** = Field is locked (protected from automatic updates)
+- 🔓 **No lock icon** = Field is unlocked (can be updated by Plex)
+
+![Example of locked genre field in Plex](example/genre.png)
+
+*The lock icon indicates this genre field is protected from automatic changes*
+
+</details>
+
+</details>
+
+<details id="getting-api-keys">
+<summary><h3 style="margin: 0; display: inline;">🔑 Getting API Keys</h3></summary>
+
+### Plex Token
+
+1. Open Plex Web App in browser
+2. Press F12 → Network tab
+3. Refresh the page
+4. Find any request with `X-Plex-Token` in headers
+5. Copy the token value
+
+### TMDb API Key
+
+1. Visit [TMDb API Settings](https://www.themoviedb.org/settings/api)
+2. Create account and generate API key
+3. Use the Read Access Token (not the API key)
+
+</details>
+
+<details id="troubleshooting">
+<summary><h3 style="margin: 0; display: inline;">🔧 Troubleshooting</h3></summary>
 
 ### Common Issues
 
@@ -666,7 +523,75 @@ If you have an existing movie library without TMDb IDs in file paths:
 
 **⚠️ Note**: Large libraries may take time to rename. Consider doing this in batches during low-usage periods.
 
-## 🤝 Contributing
+</details>
+
+<details id="local-development">
+<summary><h3 style="margin: 0; display: inline;">🛠️ Local Development</h3></summary>
+
+### Prerequisites
+
+- Go 1.23+
+- Git
+
+### Build and Run
+
+```bash
+# Clone the repository
+git clone https://github.com/nullable-eth/labelarr.git
+cd labelarr
+
+# Initialize Go modules
+go mod tidy
+
+# Set environment variables
+export PLEX_SERVER=localhost
+export PLEX_PORT=32400
+export PLEX_TOKEN=your_plex_token
+export TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
+export MOVIE_PROCESS_ALL=true
+export TV_PROCESS_ALL=true
+
+# Run the application
+go run main.go
+```
+
+### Build Binary
+
+```bash
+# Build for current platform
+go build -o labelarr main.go
+
+# Build for Linux (Docker)
+CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o labelarr main.go
+```
+
+</details>
+
+<details id="monitoring">
+<summary><h3 style="margin: 0; display: inline;">📊 Monitoring</h3></summary>
+
+### View Logs
+
+```bash
+# Docker logs
+docker logs labelarr
+
+# Follow logs
+docker logs -f labelarr
+```
+
+### Log Output Includes
+
+- Processing progress with movie counts
+- TMDb ID detection results
+- Label synchronization status
+- API error handling and retries
+- Detailed processing summaries
+
+</details>
+
+<details id="contributing">
+<summary><h3 style="margin: 0; display: inline;">🤝 Contributing</h3></summary>
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -674,15 +599,23 @@ If you have an existing movie library without TMDb IDs in file paths:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📞 Support
+</details>
+
+<details id="support">
+<summary><h3 style="margin: 0; display: inline;">📞 Support</h3></summary>
 
 - **GitHub**: [https://github.com/nullable-eth/labelarr](https://github.com/nullable-eth/labelarr)
 - **Issues**: Report bugs and feature requests
 - **Logs**: Check container logs for troubleshooting with `docker logs labelarr`
 
-## 📄 License
+</details>
+
+<details id="license">
+<summary><h3 style="margin: 0; display: inline;">📄 License</h3></summary>
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+</details>
 
 ---
 
