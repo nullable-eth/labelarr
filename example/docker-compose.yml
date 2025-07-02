@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   labelarr:
-    image: nullableeth/labelarr:latest
+    image: ghcr.io/nullable-eth/labelarr:latest
     container_name: labelarr
     restart: unless-stopped
     environment:
@@ -10,7 +10,8 @@ services:
       - PLEX_PORT=32400
       - PLEX_REQUIRES_HTTPS=true
       - PLEX_TOKEN=your_plex_token_here
-      - TMDB_API_KEY=your_tmdb_api_key_here
-      - PROCESS_TIMER=5m
-      - PROCESS_ALL_MOVIE_LIBRARIES=true
+      - TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
+      - PROCESS_TIMER=1h
+      - MOVIE_PROCESS_ALL=true
+      - TV_PROCESS_ALL=true
       

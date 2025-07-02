@@ -1,0 +1,121 @@
+name: Build and Publish Docker Image
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for version calculation
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate version and tags
+        id: meta
+        run: |
+          # Convert repository name to lowercase
+          IMAGE_NAME_LOWER=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          
+          # Get current date for version generation
+          DATE=$(date +'%Y%m%d')
+          
+          # Generate version based on context
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            # If this is a tag push, use the tag as version
+            VERSION=${GITHUB_REF#refs/tags/v}
+            TAGS="${IMAGE_NAME_LOWER}:${VERSION},${IMAGE_NAME_LOWER}:latest"
+          elif [[ $GITHUB_REF == refs/heads/main ]]; then
+            # If this is main branch, generate auto-incrementing version
+            # Get count of commits to main for auto-incrementing
+            COMMIT_COUNT=$(git rev-list --count HEAD)
+            SHORT_SHA=${GITHUB_SHA::8}
+            
+            # Generate semantic version: 1.0.COMMIT_COUNT-DATE
+            VERSION="1.0.${COMMIT_COUNT}"
+            TAGS="${IMAGE_NAME_LOWER}:${VERSION},${IMAGE_NAME_LOWER}:latest,${IMAGE_NAME_LOWER}:${DATE}-${SHORT_SHA}"
+          else
+            # For pull requests or other branches
+            SHORT_SHA=${GITHUB_SHA::8}
+            VERSION="pr-${SHORT_SHA}"
+            TAGS="${IMAGE_NAME_LOWER}:${VERSION}"
+          fi
+          
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "TAGS=${TAGS}" >> $GITHUB_OUTPUT
+          echo "IMAGE_NAME_LOWER=${IMAGE_NAME_LOWER}" >> $GITHUB_OUTPUT
+          
+          # Print for debugging
+          echo "Generated version: ${VERSION}"
+          echo "Generated tags: ${TAGS}"
+
+      - name: Extract metadata
+        id: docker_meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.meta.outputs.IMAGE_NAME_LOWER }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ steps.meta.outputs.VERSION }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate summary
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "## 🐳 Docker Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.meta.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.docker_meta.outputs.tags }}" | tr ',' '\n' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Pull command:**" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ steps.meta.outputs.IMAGE_NAME_LOWER }}:${{ steps.meta.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY 
