@@ -1,0 +1,155 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'example/**'
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.changes.outputs.should_release }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for significant changes
+        id: changes
+        run: |
+          # Get the last release tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Last tag: $LAST_TAG"
+          
+          # Check if there are changes in source code since last release
+          if git diff --quiet $LAST_TAG HEAD -- '*.go' 'go.mod' 'go.sum' 'Dockerfile' '.github/workflows/' 'internal/' 'cmd/'; then
+            echo "No significant changes detected"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Significant changes detected"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calculate next version
+        id: version
+        if: steps.changes.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          # Get the last release tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Last tag: $LAST_TAG"
+          
+          # Remove 'v' prefix and split version
+          VERSION_NUMBER=${LAST_TAG#v}
+          IFS='.' read -r -a VERSION_PARTS <<< "$VERSION_NUMBER"
+          
+          MAJOR=${VERSION_PARTS[0]:-0}
+          MINOR=${VERSION_PARTS[1]:-0}
+          PATCH=${VERSION_PARTS[2]:-0}
+          
+          # Determine release type
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            RELEASE_TYPE="${{ github.event.inputs.release_type }}"
+          else
+            # Auto-determine based on commit messages since last release
+            COMMITS=$(git log $LAST_TAG..HEAD --oneline)
+            if echo "$COMMITS" | grep -qE "(BREAKING CHANGE|!:)"; then
+              RELEASE_TYPE="major"
+            elif echo "$COMMITS" | grep -qE "(feat:|feature:)"; then
+              RELEASE_TYPE="minor"
+            else
+              RELEASE_TYPE="patch"
+            fi
+          fi
+          
+          echo "Release type: $RELEASE_TYPE"
+          
+          # Increment version based on release type
+          case $RELEASE_TYPE in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+  create-release:
+    needs: check-changes
+    if: needs.check-changes.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the last release tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [[ -n "$LAST_TAG" ]]; then
+            echo "## What's Changed" > changelog.md
+            echo "" >> changelog.md
+            
+            # Get commits since last release
+            git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)" --reverse >> changelog.md
+          else
+            echo "## Initial Release" > changelog.md
+            echo "" >> changelog.md
+            echo "🎉 First release of Labelarr!" >> changelog.md
+            echo "" >> changelog.md
+            echo "### Features" >> changelog.md
+            echo "- 🎬 Movie library processing with TMDb integration" >> changelog.md
+            echo "- 📺 TV show library processing with TMDb integration" >> changelog.md
+            echo "- 🏷️ Smart label/genre management" >> changelog.md
+            echo "- 🐳 Docker container with multi-architecture support" >> changelog.md
+          fi
+          
+          echo "" >> changelog.md
+          echo "### Docker Image" >> changelog.md
+          echo '```bash' >> changelog.md
+          echo "docker pull ghcr.io/${{ github.repository_owner }}/$(echo '${{ github.repository }}' | cut -d'/' -f2):${{ needs.check-changes.outputs.version }}" >> changelog.md
+          echo '```' >> changelog.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.check-changes.outputs.version }}
+          name: Release ${{ needs.check-changes.outputs.version }}
+          body_path: changelog.md
+          draft: false
+          prerelease: false
+          generate_release_notes: true 
