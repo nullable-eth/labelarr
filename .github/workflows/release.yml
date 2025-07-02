@@ -37,11 +37,15 @@ jobs:
         id: changes
         run: |
           # Get the last release tag
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Last tag: $LAST_TAG"
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "Last tag: ${LAST_TAG:-'(none)'}"
           
           # Check if there are changes in source code since last release
-          if git diff --quiet $LAST_TAG HEAD -- '*.go' 'go.mod' 'go.sum' 'Dockerfile' '.github/workflows/' 'internal/' 'cmd/'; then
+          if [[ -z "$LAST_TAG" ]]; then
+            # No previous tags, this is the first release
+            echo "No previous tags found - first release"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          elif git diff --quiet $LAST_TAG HEAD -- '*.go' 'go.mod' 'go.sum' 'Dockerfile' '.github/workflows/' 'internal/' 'cmd/'; then
             echo "No significant changes detected"
             echo "should_release=false" >> $GITHUB_OUTPUT
           else
@@ -54,23 +58,39 @@ jobs:
         if: steps.changes.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           # Get the last release tag
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Last tag: $LAST_TAG"
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "Last tag: ${LAST_TAG:-'(none)'}"
           
-          # Remove 'v' prefix and split version
-          VERSION_NUMBER=${LAST_TAG#v}
-          IFS='.' read -r -a VERSION_PARTS <<< "$VERSION_NUMBER"
-          
-          MAJOR=${VERSION_PARTS[0]:-0}
-          MINOR=${VERSION_PARTS[1]:-0}
-          PATCH=${VERSION_PARTS[2]:-0}
+          # Handle first release vs. subsequent releases
+          if [[ -z "$LAST_TAG" ]]; then
+            # First release - start from v0.0.0
+            MAJOR=0
+            MINOR=0
+            PATCH=0
+            echo "First release - starting from v0.0.0"
+          else
+            # Remove 'v' prefix and split version
+            VERSION_NUMBER=${LAST_TAG#v}
+            IFS='.' read -r -a VERSION_PARTS <<< "$VERSION_NUMBER"
+            
+            MAJOR=${VERSION_PARTS[0]:-0}
+            MINOR=${VERSION_PARTS[1]:-0}
+            PATCH=${VERSION_PARTS[2]:-0}
+          fi
           
           # Determine release type
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             RELEASE_TYPE="${{ github.event.inputs.release_type }}"
           else
             # Auto-determine based on commit messages since last release
-            COMMITS=$(git log $LAST_TAG..HEAD --oneline)
+            if [[ -z "$LAST_TAG" ]]; then
+              # First release - check all commits
+              COMMITS=$(git log --oneline)
+            else
+              # Subsequent release - check commits since last tag
+              COMMITS=$(git log $LAST_TAG..HEAD --oneline)
+            fi
+            
             if echo "$COMMITS" | grep -qE "(BREAKING CHANGE|!:)"; then
               RELEASE_TYPE="major"
             elif echo "$COMMITS" | grep -qE "(feat:|feature:)"; then
@@ -135,7 +155,12 @@ jobs:
             echo "- 🎬 Movie library processing with TMDb integration" >> changelog.md
             echo "- 📺 TV show library processing with TMDb integration" >> changelog.md
             echo "- 🏷️ Smart label/genre management" >> changelog.md
+            echo "- 🔒 Field locking and unlocking capabilities" >> changelog.md
             echo "- 🐳 Docker container with multi-architecture support" >> changelog.md
+            echo "" >> changelog.md
+            echo "### Breaking Changes" >> changelog.md
+            echo "- Environment variable changes: \`LIBRARY_ID\` → \`MOVIE_LIBRARY_ID\`" >> changelog.md
+            echo "- No default library processing - requires explicit configuration" >> changelog.md
           fi
           
           echo "" >> changelog.md
