@@ -150,35 +150,59 @@ services:
 The application can find TMDb IDs from multiple sources and supports flexible formats:
 
 - **Plex Metadata**: Standard TMDb agent IDs
-- **File Paths**: `{tmdb-12345}` in filenames or directory names
-- **Flexible Formats**: The TMDb ID can be detected in a variety of patterns, not just `{tmdb-12345}`. Supported patterns include:
-  - `{tmdb-12345}` (curly braces, anywhere in the folder or file name)
-  - `[tmdb-12345]` (square brackets)
-  - `(tmdb-12345)` (parentheses)
-  - `tmdb-12345` (standalone, with or without delimiters)
-  - Case-insensitive: `TMDB-12345`, `Tmdb-12345`, etc.
-  - The TMDb ID can appear in either the directory or file name, and can be surrounded by spaces or other characters.
-  - **Delimiters**: The TMDb ID pattern supports all common delimiters (such as `:`, `;`, `-`, `_`, etc.) between `tmdb` and the ID. For example:
-    - `tmdb:15448`
-    - `tmdb;15448`
-    - `tmdb-15448`
-    - `tmdb_15448`
-    - `tmdb: 15448`, `tmdb- 15448`, etc.
-    - These can appear in any of the supported bracket/brace/parenthesis formats or standalone.
-    - The pattern will **not** match `tmdb15448` (no separator).
+- **File Paths**: Flexible TMDb ID detection in filenames or directory names
 
-Example file paths:
+### ✅ **Supported Patterns** (Case-Insensitive)
+
+The TMDb ID detection is very flexible and supports various formats:
+
+**Direct Concatenation:**
+
+- `/movies/The Matrix (1999) tmdb603/file.mkv`
+- `/movies/Inception (2010) TMDB27205/file.mkv`
+- `/movies/Avatar (2009) Tmdb19995/file.mkv`
+
+**With Separators:**
+
+- `/movies/Interstellar (2014) tmdb:157336/file.mkv`
+- `/movies/The Dark Knight (2008) tmdb-155/file.mkv`
+- `/movies/Pulp Fiction (1994) tmdb_680/file.mkv`
+- `/movies/Fight Club (1999) tmdb=550/file.mkv`
+- `/movies/The Shawshank Redemption (1994) tmdb 278/file.mkv`
+
+**With Brackets/Braces:**
+
+- `/movies/Goodfellas (1990) {tmdb634}/file.mkv`
+- `/movies/Forrest Gump (1994) [tmdb-13]/file.mkv`
+- `/movies/The Godfather (1972) (tmdb:238)/file.mkv`
+- `/movies/Taxi Driver (1976) {tmdb=103}/file.mkv`
+- `/movies/Casablanca (1942) (tmdb 289)/file.mkv`
+
+**Mixed Examples:**
+
+- `/movies/Citizen Kane (1941) something tmdb: 15678 extra/file.mkv`
+- `/movies/Vertigo (1958) {tmdb=194884}/file.mkv`
+- `/movies/Psycho (1960) [ tmdb-539 ]/file.mkv`
+
+### ❌ **Will NOT Match**
+
+- `mytmdb12345` (preceded by alphanumeric characters)
+- `tmdb12345abc` (followed by alphanumeric characters)  
+- `tmdb` (no digits following)
+
+### 📁 **Example File Paths**
 
 ```
 /movies/The Matrix (1999) [tmdb-603]/The Matrix.mkv
 /movies/Inception (2010) (tmdb:27205)/Inception.mkv
-/movies/Avatar (2009) tmdb;19995/Avatar.mkv
+/movies/Avatar (2009) tmdb19995/Avatar.mkv
 /movies/Interstellar (2014) TMDB_157336/Interstellar.mkv
-/movies/Edge Case - {tmdb-12345}/file.mkv
+/movies/Edge Case - {tmdb=12345}/file.mkv
 /movies/Colon: [tmdb:54321]/file.mkv
 /movies/Semicolon; (tmdb;67890)/file.mkv
 /movies/Underscore_tmdb_11111/file.mkv
 /movies/ExtraSuffix tmdb-22222_extra/file.mkv
+/movies/Direct tmdb194884 format/file.mkv
 ```
 
 </details>
@@ -522,6 +546,38 @@ If you have an existing movie library without TMDb IDs in file paths:
 4. **Run Labelarr** - it will now detect TMDb IDs from the updated file paths
 
 **⚠️ Note**: Large libraries may take time to rename. Consider doing this in batches during low-usage periods.
+
+### 📺 Sonarr Users: Renaming Existing Folders to Include TMDb ID
+
+If you're using Sonarr to manage your TV show collection and want to apply new folder naming that includes TMDb IDs, here's how to rename existing folders:
+
+#### **🔄 Apply the New Folder Names**
+
+To actually rename existing folders:
+
+1. **Go to the Series tab**
+
+2. **Click the Mass Editor** (three sliders icon)
+
+3. **Select the shows** you want to rename
+
+4. **At the bottom, click "Edit"**
+
+5. **In the popup:**
+   - Set the **Root Folder** to the same one it's already using (e.g., `/mnt/user/TV`)
+   - Click **"Save"**
+
+6. **Sonarr will interpret this as a move** and apply the new folder naming format without physically moving the files—just renaming the folders.
+
+#### **Example Result**
+
+After applying the new naming format, your TV show folders will include TMDb IDs:
+
+```
+/tv/Batman [tmdb-2287]/Season 3/Batman - S03E17 - The Joke's on Catwoman Bluray-1080p [tmdb-2287].mkv
+```
+
+**💡 Pro Tip**: This method works for renaming folders without actually moving files, making it safe and efficient for large TV libraries.
 
 </details>
 
