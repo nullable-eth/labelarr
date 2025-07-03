@@ -498,8 +498,10 @@ func (p *Processor) extractTVShowTMDbID(item MediaItem) string {
 
 // ExtractTMDbIDFromPath extracts TMDb ID from file path using regex
 func ExtractTMDbIDFromPath(filePath string) string {
-	// Updated regex pattern to match {tmdb-123456} anywhere in the path
-	re := regexp.MustCompile(`\{tmdb-(\d+)\}`)
+	// Flexible regex pattern to match tmdb followed by digits with separators around the whole pattern
+	// Matches: tmdb123, tmdb:123, {tmdb-456}, [tmdb=789], tmdb_012, etc.
+	// Requires word boundaries or separators around the tmdb+digits pattern
+	re := regexp.MustCompile(`(?i)(?:^|[^a-zA-Z0-9])tmdb[^a-zA-Z0-9]*(\d+)(?:[^a-zA-Z0-9]|$)`)
 	matches := re.FindStringSubmatch(filePath)
 	if len(matches) > 1 {
 		return matches[1]
