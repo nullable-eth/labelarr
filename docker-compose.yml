@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  labelarr:
+    image: ghcr.io/nullable-eth/labelarr:latest
+    container_name: labelarr
+    restart: unless-stopped
+    volumes:
+      - ./labelarr-data:/data  # Persistent storage for processed items
+    environment:
+      # Required - Get from Plex Web (F12 → Network → X-Plex-Token)
+      - PLEX_TOKEN=your_plex_token_here
+      # Required - Get from https://www.themoviedb.org/settings/api
+      - TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
+      # Required - Your Plex server details
+      - PLEX_SERVER=localhost
+      - PLEX_PORT=32400
+      - PLEX_REQUIRES_HTTPS=true
+      
+      # Process all libraries (recommended for first-time users)
+      - MOVIE_PROCESS_ALL=true
+      - TV_PROCESS_ALL=true
+      
+      # Optional settings
+      - PROCESS_TIMER=1h
+      - UPDATE_FIELD=label  # or 'genre'
+      - VERBOSE_LOGGING=false  # Set to true for detailed lookup information
+      - DATA_DIR=/data  # Directory for persistent storage (mounted as volume)
+      - FORCE_UPDATE=false  # Set to true to reprocess all items
+      
+      # Radarr integration (optional)
+      - USE_RADARR=false  # Set to true to enable
+      - RADARR_URL=http://localhost:7878  # Your Radarr URL
+      - RADARR_API_KEY=your_radarr_api_key  # Your Radarr API key
+      
+      # Sonarr integration (optional)
+      - USE_SONARR=false  # Set to true to enable
+      - SONARR_URL=http://localhost:8989  # Your Sonarr URL
+      - SONARR_API_KEY=your_sonarr_api_key  # Your Sonarr API key

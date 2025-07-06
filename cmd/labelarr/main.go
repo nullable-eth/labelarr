@@ -8,6 +8,8 @@ import (
 	"github.com/nullable-eth/labelarr/internal/config"
 	"github.com/nullable-eth/labelarr/internal/media"
 	"github.com/nullable-eth/labelarr/internal/plex"
+	"github.com/nullable-eth/labelarr/internal/radarr"
+	"github.com/nullable-eth/labelarr/internal/sonarr"
 	"github.com/nullable-eth/labelarr/internal/tmdb"
 )
 
@@ -24,9 +26,42 @@ func main() {
 	// Initialize clients
 	plexClient := plex.NewClient(cfg)
 	tmdbClient := tmdb.NewClient(cfg)
+	
+	// Test TMDb connection
+	if err := tmdbClient.TestConnection(); err != nil {
+		fmt.Printf("❌ Failed to connect to TMDb: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("✅ Successfully connected to TMDb")
+	
+	// Initialize Radarr client if enabled
+	var radarrClient *radarr.Client
+	if cfg.UseRadarr {
+		radarrClient = radarr.NewClient(cfg.RadarrURL, cfg.RadarrAPIKey)
+		if err := radarrClient.TestConnection(); err != nil {
+			fmt.Printf("❌ Failed to connect to Radarr: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✅ Successfully connected to Radarr")
+	}
+	
+	// Initialize Sonarr client if enabled
+	var sonarrClient *sonarr.Client
+	if cfg.UseSonarr {
+		sonarrClient = sonarr.NewClient(cfg.SonarrURL, cfg.SonarrAPIKey)
+		if err := sonarrClient.TestConnection(); err != nil {
+			fmt.Printf("❌ Failed to connect to Sonarr: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✅ Successfully connected to Sonarr")
+	}
 
 	// Initialize single processor
-	processor := media.NewProcessor(cfg, plexClient, tmdbClient)
+	processor, err := media.NewProcessor(cfg, plexClient, tmdbClient, radarrClient, sonarrClient)
+	if err != nil {
+		fmt.Printf("❌ Failed to initialize processor: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Println("🏷️ Starting Labelarr with TMDb Integration...")
 	fmt.Printf("📡 Server: %s://%s:%s\n", cfg.Protocol, cfg.PlexServer, cfg.PlexPort)

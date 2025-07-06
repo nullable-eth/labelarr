@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nullable-eth/labelarr/internal/config"
+	"github.com/nullable-eth/labelarr/internal/utils"
 )
 
 // Client represents a TMDb API client
@@ -48,7 +49,11 @@ func (c *Client) GetMovieKeywords(tmdbID string) ([]string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tmdb API returned status %d for movie %s", resp.StatusCode, tmdbID)
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusUnauthorized {
+			return nil, fmt.Errorf("tmdb API authentication failed (status 401) - check your TMDB_READ_ACCESS_TOKEN. Response: %s", string(body))
+		}
+		return nil, fmt.Errorf("tmdb API returned status %d for movie %s. Response: %s", resp.StatusCode, tmdbID, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -66,7 +71,19 @@ func (c *Client) GetMovieKeywords(tmdbID string) ([]string, error) {
 		keywords[i] = keyword.Name
 	}
 
-	return keywords, nil
+	// Normalize keywords for proper capitalization and spelling
+	normalizedKeywords := utils.NormalizeKeywords(keywords)
+	
+	// Show normalization in verbose mode
+	if c.config.VerboseLogging {
+		for i, original := range keywords {
+			if i < len(normalizedKeywords) && original != normalizedKeywords[i] {
+				fmt.Printf("   📝 Normalized: \"%s\" → \"%s\"\n", original, normalizedKeywords[i])
+			}
+		}
+	}
+
+	return normalizedKeywords, nil
 }
 
 // GetTVShowKeywords fetches keywords for a TV show from TMDb
@@ -93,7 +110,11 @@ func (c *Client) GetTVShowKeywords(tmdbID string) ([]string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tmdb API returned status %d for TV show %s", resp.StatusCode, tmdbID)
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusUnauthorized {
+			return nil, fmt.Errorf("tmdb API authentication failed (status 401) - check your TMDB_READ_ACCESS_TOKEN. Response: %s", string(body))
+		}
+		return nil, fmt.Errorf("tmdb API returned status %d for TV show %s. Response: %s", resp.StatusCode, tmdbID, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -111,5 +132,49 @@ func (c *Client) GetTVShowKeywords(tmdbID string) ([]string, error) {
 		keywords[i] = keyword.Name
 	}
 
-	return keywords, nil
+	// Normalize keywords for proper capitalization and spelling
+	normalizedKeywords := utils.NormalizeKeywords(keywords)
+	
+	// Show normalization in verbose mode
+	if c.config.VerboseLogging {
+		for i, original := range keywords {
+			if i < len(normalizedKeywords) && original != normalizedKeywords[i] {
+				fmt.Printf("   📝 Normalized: \"%s\" → \"%s\"\n", original, normalizedKeywords[i])
+			}
+		}
+	}
+
+	return normalizedKeywords, nil
+}
+
+// TestConnection tests the TMDb API connection
+func (c *Client) TestConnection() error {
+	// Test with a known movie ID (The Godfather)
+	testURL := "https://api.themoviedb.org/3/movie/238/keywords"
+	
+	req, err := http.NewRequest("GET", testURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create test request: %w", err)
+	}
+	
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.TMDbReadAccessToken))
+	req.Header.Set("Accept", "application/json")
+	
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to TMDb API: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode == http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("TMDb API authentication failed - invalid TMDB_READ_ACCESS_TOKEN. Response: %s", string(body))
+	}
+	
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("TMDb API test failed with status %d. Response: %s", resp.StatusCode, string(body))
+	}
+	
+	return nil
 }

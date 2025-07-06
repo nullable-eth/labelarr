@@ -21,6 +21,25 @@ type Config struct {
 	RemoveMode          string
 	TMDbReadAccessToken string
 	ProcessTimer        time.Duration
+	
+	// Radarr configuration
+	RadarrURL    string
+	RadarrAPIKey string
+	UseRadarr    bool
+	
+	// Sonarr configuration
+	SonarrURL    string
+	SonarrAPIKey string
+	UseSonarr    bool
+	
+	// Logging configuration
+	VerboseLogging bool
+	
+	// Storage configuration
+	DataDir string
+	
+	// Force update configuration
+	ForceUpdate bool
 }
 
 // Load loads configuration from environment variables
@@ -37,6 +56,25 @@ func Load() *Config {
 		RemoveMode:          os.Getenv("REMOVE"),
 		TMDbReadAccessToken: os.Getenv("TMDB_READ_ACCESS_TOKEN"),
 		ProcessTimer:        getProcessTimerFromEnv(),
+		
+		// Radarr configuration
+		RadarrURL:    os.Getenv("RADARR_URL"),
+		RadarrAPIKey: os.Getenv("RADARR_API_KEY"),
+		UseRadarr:    getBoolEnvWithDefault("USE_RADARR", false),
+		
+		// Sonarr configuration
+		SonarrURL:    os.Getenv("SONARR_URL"),
+		SonarrAPIKey: os.Getenv("SONARR_API_KEY"),
+		UseSonarr:    getBoolEnvWithDefault("USE_SONARR", false),
+		
+		// Logging configuration
+		VerboseLogging: getBoolEnvWithDefault("VERBOSE_LOGGING", false),
+		
+		// Storage configuration
+		DataDir: getEnvWithDefault("DATA_DIR", "/data"),
+		
+		// Force update configuration
+		ForceUpdate: getBoolEnvWithDefault("FORCE_UPDATE", false),
 	}
 
 	// Set protocol based on HTTPS requirement
@@ -84,6 +122,27 @@ func (c *Config) Validate() error {
 	if c.RemoveMode != "" && c.RemoveMode != "lock" && c.RemoveMode != "unlock" {
 		return fmt.Errorf("REMOVE must be 'lock' or 'unlock'")
 	}
+	
+	// Validate Radarr configuration if enabled
+	if c.UseRadarr {
+		if c.RadarrURL == "" {
+			return fmt.Errorf("RADARR_URL environment variable is required when USE_RADARR is true")
+		}
+		if c.RadarrAPIKey == "" {
+			return fmt.Errorf("RADARR_API_KEY environment variable is required when USE_RADARR is true")
+		}
+	}
+	
+	// Validate Sonarr configuration if enabled
+	if c.UseSonarr {
+		if c.SonarrURL == "" {
+			return fmt.Errorf("SONARR_URL environment variable is required when USE_SONARR is true")
+		}
+		if c.SonarrAPIKey == "" {
+			return fmt.Errorf("SONARR_API_KEY environment variable is required when USE_SONARR is true")
+		}
+	}
+	
 	return nil
 }
 
