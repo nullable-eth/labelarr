@@ -8,8 +8,6 @@
 **Automatically sync TMDb keywords as Plex labels or genres for movies and TV shows**  
 Lightweight Docker container that bridges Plex with The Movie Database, adding searchable keywords to your media.
 
-> **🔀 Fork Notice**: This is an enhanced fork of the original [Labelarr](https://github.com/Buttercup2k/Labelarr) project with new features including Radarr/Sonarr integration, persistent storage, verbose logging, and intelligent keyword normalization.
-
 ## 🚀 Quick Start
 
 ### Docker Compose (Recommended)
@@ -563,6 +561,7 @@ environment:
 ```
 
 This is especially useful for:
+
 - Troubleshooting why certain items aren't being matched
 - Understanding which data source provided the TMDb ID
 - Debugging Radarr/Sonarr integration issues
@@ -586,11 +585,13 @@ Labelarr automatically normalizes keywords from TMDb using intelligent pattern r
 ### Examples
 
 **Before normalization:**
+
 ```
 sci-fi, action, fbi, based on novel, time travel, woman in peril
 ```
 
 **After normalization:**
+
 ```
 Sci-Fi, Action, FBI, Based on Novel, Time Travel, Woman in Peril
 ```
@@ -617,6 +618,7 @@ Labelarr automatically cleans up duplicate keywords when applying normalization:
 ### Verbose Logging
 
 With `VERBOSE_LOGGING=true`, you'll see normalization and cleaning in action:
+
 ```
 📝 Normalized: "sci-fi" → "Sci-Fi"
 📝 Normalized: "fbi" → "FBI"
@@ -648,6 +650,7 @@ environment:
 ### What it does
 
 When `FORCE_UPDATE=true`:
+
 - ✅ Processes all items regardless of previous processing status
 - ✅ Reapplies keywords even if they already exist
 - ✅ Updates storage with latest processing information
