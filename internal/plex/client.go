@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/nullable-eth/labelarr/internal/config"
 )
@@ -139,6 +140,9 @@ func (c *Client) GetMovieDetails(ratingKey string) (*Movie, error) {
 
 // UpdateMediaField updates a media item's field (labels or genres) with new keywords
 func (c *Client) UpdateMediaField(mediaID, libraryID string, keywords []string, updateField string, mediaType string) error {
+	if c.config.VerboseLogging {
+		fmt.Printf("   🌐 Making Plex API call to update %s field with %d keywords\n", updateField, len(keywords))
+	}
 	return c.updateMediaField(mediaID, libraryID, keywords, updateField, c.getMediaTypeForLibraryType(mediaType))
 }
 
@@ -255,6 +259,8 @@ func (c *Client) GetTVShowEpisodes(ratingKey string) ([]Episode, error) {
 
 // updateMediaField is a generic function to update media fields (movies: type=1, TV shows: type=2)
 func (c *Client) updateMediaField(mediaID, libraryID string, keywords []string, updateField string, mediaType int) error {
+	startTime := time.Now()
+	
 	// Build the base URL
 	baseURL := c.buildURL(fmt.Sprintf("/library/sections/%s/all", libraryID))
 
@@ -298,6 +304,11 @@ func (c *Client) updateMediaField(mediaID, libraryID string, keywords []string, 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("plex API returned status %d when updating media field - Response: %s", resp.StatusCode, string(body))
+	}
+	
+	if c.config.VerboseLogging {
+		duration := time.Since(startTime)
+		fmt.Printf("   ⏱️ Plex API call completed in %v\n", duration)
 	}
 
 	return nil
