@@ -52,3 +52,8 @@ build/
 # Exclude build scripts and README
 build-and-deploy.sh
 build-and-deploy.ps1
+
+# Claude AI specific files
+.claude
+CLAUDE.md
+PR_DESCRIPTION.md

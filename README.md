@@ -8,6 +8,8 @@
 **Automatically sync TMDb keywords as Plex labels or genres for movies and TV shows**  
 Lightweight Docker container that bridges Plex with The Movie Database, adding searchable keywords to your media.
 
+> **🔀 Fork Notice**: This is an enhanced fork of the original [Labelarr](https://github.com/Buttercup2k/Labelarr) project with new features including Radarr/Sonarr integration, persistent storage, verbose logging, and intelligent keyword normalization.
+
 ## 🚀 Quick Start
 
 ### Docker Compose (Recommended)
@@ -35,17 +37,35 @@ services:
       # Optional settings
       - PROCESS_TIMER=1h
       - UPDATE_FIELD=label  # or 'genre'
+      # Optional Radarr/Sonarr integration
+      # - USE_RADARR=true
+      # - RADARR_URL=http://radarr:7878
+      # - RADARR_API_KEY=your_radarr_api_key
+      # - USE_SONARR=true
+      # - SONARR_URL=http://sonarr:8989
+      # - SONARR_API_KEY=your_sonarr_api_key
 ```
 
 **Run:** `docker-compose up -d`
 
 ### What it does
 
-✅ **Detects TMDb IDs** from Plex metadata or file paths (e.g., `{tmdb-12345}`)  
+✅ **Detects TMDb IDs** from Plex metadata, Radarr/Sonarr APIs, or file paths (e.g., `{tmdb-12345}`)  
 ✅ **Fetches keywords** from TMDb API for movies and TV shows  
+✅ **Normalizes keywords** with proper capitalization and spelling  
 ✅ **Adds as Plex labels/genres** - never removes existing values  
 ✅ **Runs automatically** on configurable timer (default: 1 hour)  
-✅ **Multi-architecture** support (AMD64 + ARM64)
+✅ **Multi-architecture** support (AMD64 + ARM64)  
+
+### 🎉 New Features in This Fork
+
+- **🚀 Radarr/Sonarr Integration** - Automatically detect TMDb IDs from your media managers
+- **💾 Persistent Storage** - Tracks processed items across container restarts
+- **🔍 Verbose Logging** - Detailed debugging information for troubleshooting
+- **📝 Keyword Normalization** - Intelligent formatting with pattern recognition
+- **🔄 Force Update Mode** - Reprocess all items regardless of previous processing status
+- **🧹 Smart Duplicate Cleaning** - Automatically removes old unnormalized keywords when adding normalized versions
+- **🔒 Enhanced Error Handling** - Better authentication and connection testing
 
 ---
 
@@ -128,6 +148,21 @@ services:
 - `UPDATE_FIELD=label` - Field to update: `label` or `genre` (default: `label`)
 - `PROCESS_TIMER=1h` - How often to run 24h, 5m, 2h30m etc. (default: `1h`)
 - `REMOVE=lock` - Clean mode: `lock` or `unlock` (runs once and exits)
+- `VERBOSE_LOGGING=true` - Enable detailed lookup information (default: `false`)
+- `DATA_DIR=/data` - Directory for persistent storage (default: `/data`)
+- `FORCE_UPDATE=true` - Force reprocess all items regardless of previous processing (default: `false`)
+
+**Radarr Integration (Optional):**
+
+- `USE_RADARR=true` - Enable Radarr integration (default: `false`)
+- `RADARR_URL=http://localhost:7878` - Your Radarr instance URL
+- `RADARR_API_KEY=your_api_key` - Your Radarr API key
+
+**Sonarr Integration (Optional):**
+
+- `USE_SONARR=true` - Enable Sonarr integration (default: `false`)
+- `SONARR_URL=http://localhost:8989` - Your Sonarr instance URL
+- `SONARR_API_KEY=your_api_key` - Your Sonarr API key
 
 </details>
 
@@ -144,12 +179,67 @@ services:
 
 </details>
 
+<details id="radarr-sonarr-integration">
+<summary><h3 style="margin: 0; display: inline;">🚀 Radarr/Sonarr Integration</h3></summary>
+
+Labelarr now supports automatic TMDb ID detection through Radarr and Sonarr APIs, eliminating the need for TMDb IDs in file paths!
+
+### Benefits
+
+- ✅ **No file renaming required** - Works with your existing file structure
+- ✅ **Multiple matching methods** - Title, year, IMDb ID, TVDb ID, file path
+- ✅ **Automatic fallback** - If Radarr/Sonarr doesn't have the item, falls back to file path detection
+- ✅ **Optional integration** - Enable only if you use Radarr/Sonarr
+
+### How It Works
+
+1. **For Movies (Radarr)**:
+   - Matches by title and year
+   - Falls back to IMDb ID from Plex
+   - Checks file paths against Radarr's database
+   - Extracts TMDb ID from matched movie
+
+2. **For TV Shows (Sonarr)**:
+   - Matches by title and year
+   - Uses TVDb ID from Plex if available
+   - Falls back to IMDb ID
+   - Checks episode file paths against Sonarr's database
+   - Extracts TMDb ID from matched series
+
+### Configuration Example
+
+```yaml
+services:
+  labelarr:
+    image: ghcr.io/nullable-eth/labelarr:latest
+    environment:
+      # ... other config ...
+      
+      # Enable Radarr integration
+      - USE_RADARR=true
+      - RADARR_URL=http://radarr:7878
+      - RADARR_API_KEY=your_radarr_api_key
+      
+      # Enable Sonarr integration
+      - USE_SONARR=true
+      - SONARR_URL=http://sonarr:8989
+      - SONARR_API_KEY=your_sonarr_api_key
+```
+
+### Finding Your API Keys
+
+**Radarr**: Settings → General → Security → API Key  
+**Sonarr**: Settings → General → Security → API Key
+
+</details>
+
 <details id="tmdb-id-detection">
 <summary><h3 style="margin: 0; display: inline;">🔍 TMDb ID Detection</h3></summary>
 
 The application can find TMDb IDs from multiple sources and supports flexible formats:
 
 - **Plex Metadata**: Standard TMDb agent IDs
+- **Radarr/Sonarr APIs**: Automatic matching (when enabled)
 - **File Paths**: Flexible TMDb ID detection in filenames or directory names
 
 ### ✅ **Supported Patterns** (Case-Insensitive)
@@ -419,6 +509,159 @@ In Plex Web UI, you'll see:
 *The lock icon indicates this genre field is protected from automatic changes*
 
 </details>
+
+</details>
+
+<details id="verbose-logging">
+<summary><h3 style="margin: 0; display: inline;">🔍 Verbose Logging</h3></summary>
+
+Enable verbose logging to see detailed information about TMDb ID lookups and matching attempts.
+
+### What it shows
+
+When `VERBOSE_LOGGING=true`, you'll see:
+
+- 📋 All available Plex GUIDs for each item
+- 🎬 Radarr lookup attempts (title, file path, IMDb ID)
+- 📺 Sonarr lookup attempts (title, TVDb ID, IMDb ID, file paths)
+- 📁 File path pattern matching attempts
+- ✅ Successful matches with source information
+- ❌ Failed lookup attempts with reasons
+
+### Example Output
+
+```
+🔍 Starting TMDb ID lookup for movie: The Matrix (1999)
+   📋 Available Plex GUIDs:
+      - imdb://tt0133093
+      - tmdb://603
+   ✅ Found TMDb ID in Plex metadata: 603
+
+🔍 Starting TMDb ID lookup for movie: Inception (2010)
+   📋 Available Plex GUIDs:
+      - imdb://tt1375666
+   🎬 Checking Radarr for movie match...
+      → Searching by title: "Inception" year: 2010
+      ✅ Found match in Radarr: Inception (TMDb: 27205)
+
+🔍 Starting TMDb ID lookup for TV show: Breaking Bad (2008)
+   📋 Available Plex GUIDs:
+      - tvdb://81189
+      - imdb://tt0903747
+   📺 Checking Sonarr for series match...
+      → Searching by title: "Breaking Bad" year: 2008
+      ❌ No match found by title/year
+      → Searching by TVDb ID: 81189
+      ✅ Found match by TVDb ID: Breaking Bad (TMDb: 1396)
+```
+
+### Configuration
+
+```yaml
+environment:
+  - VERBOSE_LOGGING=true
+```
+
+This is especially useful for:
+- Troubleshooting why certain items aren't being matched
+- Understanding which data source provided the TMDb ID
+- Debugging Radarr/Sonarr integration issues
+
+</details>
+
+<details id="keyword-normalization">
+<summary><h3 style="margin: 0; display: inline;">📝 Keyword Normalization</h3></summary>
+
+Labelarr automatically normalizes keywords from TMDb using intelligent pattern recognition and proper capitalization rules.
+
+### How it works
+
+- **Smart Title Casing**: Proper capitalization with article/preposition handling
+- **Acronym Recognition**: Automatically detects "fbi" → "FBI", "usa" → "USA"
+- **Pattern-Based Rules**: Dynamic handling of common patterns without hardcoding every keyword
+- **Critical Replacements**: Known abbreviations like "sci-fi" → "Sci-Fi", "romcom" → "Romantic Comedy"
+- **Intelligent Patterns**: Recognizes relationships, locations, decades, and compound terms
+- **Duplicate Removal**: Removes duplicates after normalization
+
+### Examples
+
+**Before normalization:**
+```
+sci-fi, action, fbi, based on novel, time travel, woman in peril
+```
+
+**After normalization:**
+```
+Sci-Fi, Action, FBI, Based on Novel, Time Travel, Woman in Peril
+```
+
+### Pattern Recognition Examples
+
+- **Critical Replacements**: `sci-fi`, `scifi`, `sci fi` → `Sci-Fi`
+- **Relationships**: `father daughter` → `Father Daughter Relationship`
+- **Locations**: `san francisco, california` → `San Francisco, California`
+- **Versus Patterns**: `man vs nature` → `Man vs Nature`
+- **Based On**: `based on novel` → `Based on Novel`
+- **Decades**: `1940s` → `1940s` (preserved)
+- **Ethnicity**: `african american lead` → `African American Lead`
+- **General Terms**: Any multi-word keyword gets proper title casing
+
+### Smart Duplicate Cleaning
+
+Labelarr automatically cleans up duplicate keywords when applying normalization:
+
+- **Removes old versions**: If you have "sci-fi" and we add "Sci-Fi", the old version is removed
+- **Preserves manual keywords**: Custom tags you've added manually are always kept
+- **Handles complex patterns**: Works with all normalization patterns (agencies, centuries, etc.)
+
+### Verbose Logging
+
+With `VERBOSE_LOGGING=true`, you'll see normalization and cleaning in action:
+```
+📝 Normalized: "sci-fi" → "Sci-Fi"
+📝 Normalized: "fbi" → "FBI"
+📝 Normalized: "based on novel" → "Based on Novel"
+🧹 Cleaned 2 duplicate/unnormalized keywords
+```
+
+</details>
+
+<details id="force-update">
+<summary><h3 style="margin: 0; display: inline;">🔄 Force Update Mode</h3></summary>
+
+Use force update mode to reprocess all items in your library, regardless of whether they've been processed before. This is especially useful after implementing keyword normalization or when you want to refresh all metadata.
+
+### When to use Force Update
+
+- **After enabling keyword normalization** - Update existing keywords with proper formatting
+- **Configuration changes** - When switching between label/genre fields
+- **Keyword cleanup** - Refresh all TMDb keywords with latest data
+- **Initial migration** - When moving from another labeling system
+
+### Configuration
+
+```yaml
+environment:
+  - FORCE_UPDATE=true
+```
+
+### What it does
+
+When `FORCE_UPDATE=true`:
+- ✅ Processes all items regardless of previous processing status
+- ✅ Reapplies keywords even if they already exist
+- ✅ Updates storage with latest processing information
+- ✅ Shows "FORCE UPDATE MODE" message in logs
+
+### Example Output
+
+```
+✅ Found 1250 movies in library
+🔄 FORCE UPDATE MODE: All items will be reprocessed regardless of previous processing
+⏳ Processing movies...
+```
+
+**⚠️ Note**: Force update will reprocess your entire library, which may take time for large collections. Consider running with `VERBOSE_LOGGING=true` to monitor progress.
 
 </details>
 

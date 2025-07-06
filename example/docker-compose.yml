@@ -5,13 +5,33 @@ services:
     image: ghcr.io/nullable-eth/labelarr:latest
     container_name: labelarr
     restart: unless-stopped
+    volumes:
+      - ./labelarr-data:/data  # Persistent storage for processed items
     environment:
+      # Required
       - PLEX_SERVER=localhost
       - PLEX_PORT=32400
       - PLEX_REQUIRES_HTTPS=true
       - PLEX_TOKEN=your_plex_token_here
       - TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
-      - PROCESS_TIMER=1h
+      
+      # Library Processing
       - MOVIE_PROCESS_ALL=true
       - TV_PROCESS_ALL=true
       
+      # Optional Settings
+      - PROCESS_TIMER=1h
+      - UPDATE_FIELD=label  # or 'genre'
+      - VERBOSE_LOGGING=false
+      - DATA_DIR=/data
+      - FORCE_UPDATE=false
+      
+      # Radarr Integration (optional)
+      # - USE_RADARR=true
+      # - RADARR_URL=http://radarr:7878
+      # - RADARR_API_KEY=your_radarr_api_key
+      
+      # Sonarr Integration (optional)
+      # - USE_SONARR=true
+      # - SONARR_URL=http://sonarr:8989
+      # - SONARR_API_KEY=your_sonarr_api_key

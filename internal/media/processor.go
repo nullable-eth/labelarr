@@ -8,7 +8,11 @@ import (
 
 	"github.com/nullable-eth/labelarr/internal/config"
 	"github.com/nullable-eth/labelarr/internal/plex"
+	"github.com/nullable-eth/labelarr/internal/radarr"
+	"github.com/nullable-eth/labelarr/internal/sonarr"
+	"github.com/nullable-eth/labelarr/internal/storage"
 	"github.com/nullable-eth/labelarr/internal/tmdb"
+	"github.com/nullable-eth/labelarr/internal/utils"
 )
 
 // MediaType represents the type of media being processed
@@ -19,14 +23,7 @@ const (
 	MediaTypeTV    MediaType = "tv"
 )
 
-// ProcessedItem tracks processing state for any media item
-type ProcessedItem struct {
-	RatingKey      string
-	Title          string
-	TMDbID         string
-	LastProcessed  time.Time
-	KeywordsSynced bool
-}
+// ProcessedItem is now imported from storage package
 
 // MediaItem interface for common media operations
 type MediaItem interface {
@@ -41,20 +38,38 @@ type MediaItem interface {
 
 // Processor handles media processing operations for any media type
 type Processor struct {
-	config         *config.Config
-	plexClient     *plex.Client
-	tmdbClient     *tmdb.Client
-	processedItems map[string]*ProcessedItem
+	config       *config.Config
+	plexClient   *plex.Client
+	tmdbClient   *tmdb.Client
+	radarrClient *radarr.Client
+	sonarrClient *sonarr.Client
+	storage      *storage.Storage
 }
 
 // NewProcessor creates a new generic media processor
-func NewProcessor(cfg *config.Config, plexClient *plex.Client, tmdbClient *tmdb.Client) *Processor {
-	return &Processor{
-		config:         cfg,
-		plexClient:     plexClient,
-		tmdbClient:     tmdbClient,
-		processedItems: make(map[string]*ProcessedItem),
+func NewProcessor(cfg *config.Config, plexClient *plex.Client, tmdbClient *tmdb.Client, radarrClient *radarr.Client, sonarrClient *sonarr.Client) (*Processor, error) {
+	// Initialize persistent storage
+	stor, err := storage.NewStorage(cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
+	
+	processor := &Processor{
+		config:       cfg,
+		plexClient:   plexClient,
+		tmdbClient:   tmdbClient,
+		radarrClient: radarrClient,
+		sonarrClient: sonarrClient,
+		storage:      stor,
+	}
+	
+	// Log storage initialization
+	count := stor.Count()
+	if count > 0 {
+		fmt.Printf("📁 Loaded %d previously processed items from storage\n", count)
+	}
+	
+	return processor, nil
 }
 
 // ProcessAllItems processes all items in the specified library
@@ -85,15 +100,39 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 
 	totalCount := len(items)
 	fmt.Printf("✅ Found %d %s in library\n", totalCount, displayName)
+	
+	if p.config.ForceUpdate {
+		fmt.Printf("🔄 FORCE UPDATE MODE: All items will be reprocessed regardless of previous processing\n")
+	}
+	
+	if p.config.VerboseLogging {
+		fmt.Printf("🔎 Starting detailed processing with verbose logging enabled...\n")
+	} else {
+		fmt.Printf("⏳ Processing %s... (enable VERBOSE_LOGGING=true for detailed lookup information)\n", displayName)
+	}
 
 	newItems := 0
 	updatedItems := 0
 	skippedItems := 0
 	skippedAlreadyExist := 0
+	
+	// Progress tracking
+	processedCount := 0
+	lastProgressReport := 0
 
 	for _, item := range items {
-		processed, exists := p.processedItems[item.GetRatingKey()]
-		if exists && processed.KeywordsSynced {
+		processedCount++
+		
+		// Show progress for large libraries
+		if totalCount > 100 {
+			progress := (processedCount * 100) / totalCount
+			if progress >= lastProgressReport + 10 {
+				fmt.Printf("📊 Progress: %d%% (%d/%d %s processed)\n", progress, processedCount, totalCount, displayName)
+				lastProgressReport = progress
+			}
+		}
+		processed, exists := p.storage.Get(item.GetRatingKey())
+		if exists && processed.KeywordsSynced && processed.UpdateField == p.config.UpdateField && !p.config.ForceUpdate {
 			skippedItems++
 			skippedAlreadyExist++
 			continue
@@ -103,23 +142,39 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 		tmdbID := p.extractTMDbID(item, mediaType)
 		if tmdbID == "" {
 			skippedItems++
+			if p.config.VerboseLogging && skippedItems <= 10 {
+				fmt.Printf("   ⏭️ Skipped %s: %s (%d) - No TMDb ID found\n", strings.TrimSuffix(displayName, "s"), item.GetTitle(), item.GetYear())
+			}
 			continue
 		}
 
 		// Silently fetch keywords and details to check if processing is needed
 		keywords, err := p.getKeywords(tmdbID, mediaType)
 		if err != nil {
+			if p.config.VerboseLogging {
+				fmt.Printf("   ❌ Error fetching keywords for TMDb ID %s: %v\n", tmdbID, err)
+			}
 			skippedItems++
 			continue
+		}
+		
+		if p.config.VerboseLogging {
+			fmt.Printf("   📥 Fetched %d keywords from TMDb: %v\n", len(keywords), keywords)
 		}
 
 		details, err := p.getItemDetails(item.GetRatingKey(), mediaType)
 		if err != nil {
+			if p.config.VerboseLogging {
+				fmt.Printf("   ❌ Error fetching item details: %v\n", err)
+			}
 			skippedItems++
 			continue
 		}
 
 		currentValues := p.extractCurrentValues(details)
+		if p.config.VerboseLogging {
+			fmt.Printf("   📋 Current %ss in Plex: %v\n", p.config.UpdateField, currentValues)
+		}
 
 		currentValuesMap := make(map[string]bool)
 		for _, val := range currentValues {
@@ -127,25 +182,51 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 		}
 
 		allKeywordsExist := true
+		var missingKeywords []string
 		for _, keyword := range keywords {
 			if !currentValuesMap[strings.ToLower(keyword)] {
 				allKeywordsExist = false
-				break
+				missingKeywords = append(missingKeywords, keyword)
 			}
 		}
 
-		if allKeywordsExist {
+		if allKeywordsExist && !p.config.ForceUpdate {
 			// Silently skip - no verbose output
+			if p.config.VerboseLogging {
+				fmt.Printf("   ✨ Already has all keywords, skipping\n")
+			}
 			skippedItems++
 			skippedAlreadyExist++
 			continue
+		}
+		
+		if p.config.ForceUpdate && allKeywordsExist {
+			if p.config.VerboseLogging {
+				fmt.Printf("   🔄 Force update enabled - reprocessing item with existing keywords\n")
+			}
+		}
+		
+		if p.config.VerboseLogging {
+			fmt.Printf("   🆕 Missing keywords to add: %v\n", missingKeywords)
 		}
 
 		// Only show verbose output for completely new items (never processed before)
 		if !exists {
 			fmt.Printf("\n%s Processing new %s: %s (%d)\n", emoji, strings.TrimSuffix(displayName, "s"), item.GetTitle(), item.GetYear())
-			fmt.Printf("🔑 TMDb ID: %s (%s)\n", tmdbID, item.GetTitle())
+			
+			// Show source of TMDb ID
+			source := p.getTMDbIDSource(item, mediaType, tmdbID)
+			fmt.Printf("🔑 TMDb ID: %s (source: %s)\n", tmdbID, source)
 			fmt.Printf("🏷️ Found %d TMDb keywords\n", len(keywords))
+		}
+		
+		// Show when we're about to apply labels/genres
+		if p.config.VerboseLogging || !exists {
+			fmt.Printf("🔄 Applying %d keywords to %s field...\n", len(keywords), p.config.UpdateField)
+			if p.config.VerboseLogging {
+				fmt.Printf("   Current %ss: %v\n", p.config.UpdateField, currentValues)
+				fmt.Printf("   New keywords to add: %v\n", keywords)
+			}
 		}
 
 		err = p.syncFieldWithKeywords(item.GetRatingKey(), libraryID, currentValues, keywords, mediaType)
@@ -157,13 +238,23 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 			skippedItems++
 			continue
 		}
+		
+		// Show success message when labels/genres are applied
+		if p.config.VerboseLogging || !exists {
+			fmt.Printf("✅ Successfully applied %d keywords to Plex %s field\n", len(keywords), p.config.UpdateField)
+		}
 
-		p.processedItems[item.GetRatingKey()] = &ProcessedItem{
+		processedItem := &storage.ProcessedItem{
 			RatingKey:      item.GetRatingKey(),
 			Title:          item.GetTitle(),
 			TMDbID:         tmdbID,
 			LastProcessed:  time.Now(),
 			KeywordsSynced: true,
+			UpdateField:    p.config.UpdateField,
+		}
+		
+		if err := p.storage.Set(processedItem); err != nil {
+			fmt.Printf("⚠️ Warning: Failed to save processed item to storage: %v\n", err)
 		}
 
 		if exists {
@@ -174,6 +265,11 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 		}
 
 		time.Sleep(500 * time.Millisecond)
+	}
+	
+	// Show verbose summary if items were skipped
+	if p.config.VerboseLogging && skippedItems > 10 {
+		fmt.Printf("   ... and %d more items skipped\n", skippedItems - 10)
 	}
 
 	fmt.Printf("\n📊 Processing Summary:\n")
@@ -359,20 +455,16 @@ func (p *Processor) getKeywords(tmdbID string, mediaType MediaType) ([]string, e
 
 // syncFieldWithKeywords synchronizes the configured field with TMDb keywords
 func (p *Processor) syncFieldWithKeywords(itemID, libraryID string, currentValues []string, keywords []string, mediaType MediaType) error {
-	mergedValues := append(currentValues, keywords...)
-
-	// Remove duplicates while preserving order
-	seen := make(map[string]bool)
-	var uniqueValues []string
-	for _, value := range mergedValues {
-		lowerValue := strings.ToLower(value)
-		if !seen[lowerValue] {
-			seen[lowerValue] = true
-			uniqueValues = append(uniqueValues, value)
-		}
+	// Clean duplicates: remove old unnormalized versions when normalized versions are present
+	// This helps clean up cases like having both "sci-fi" and "Sci-Fi"
+	cleanedValues := utils.CleanDuplicateKeywords(currentValues, keywords)
+	
+	if p.config.VerboseLogging && len(cleanedValues) != len(currentValues) {
+		removedCount := len(currentValues) - len(cleanedValues) + len(keywords)
+		fmt.Printf("   🧹 Cleaned %d duplicate/unnormalized keywords\n", removedCount)
 	}
 
-	return p.updateItemField(itemID, libraryID, uniqueValues, mediaType)
+	return p.updateItemField(itemID, libraryID, cleanedValues, mediaType)
 }
 
 // toPlexMediaType converts MediaType to the string format expected by plex client
@@ -443,24 +535,113 @@ func (p *Processor) extractTMDbID(item MediaItem, mediaType MediaType) string {
 
 // extractMovieTMDbID extracts TMDb ID from movie metadata or file paths
 func (p *Processor) extractMovieTMDbID(item MediaItem) string {
+	if p.config.VerboseLogging {
+		fmt.Printf("\n🔍 Starting TMDb ID lookup for movie: %s (%d)\n", item.GetTitle(), item.GetYear())
+		fmt.Printf("   📋 Available Plex GUIDs:\n")
+		for _, guid := range item.GetGuid() {
+			fmt.Printf("      - %s\n", guid.ID)
+		}
+	}
+	
 	// First, try to get TMDb ID from Plex metadata
 	for _, guid := range item.GetGuid() {
 		if strings.Contains(guid.ID, "tmdb://") {
 			parts := strings.Split(guid.ID, "//")
 			if len(parts) > 1 {
 				tmdbID := strings.Split(parts[1], "?")[0]
+				if p.config.VerboseLogging {
+					fmt.Printf("   ✅ Found TMDb ID in Plex metadata: %s\n", tmdbID)
+				}
 				return tmdbID
 			}
 		}
 	}
 
-	// If not found in metadata, try to extract from file paths
+	// If Radarr is enabled, try to match via Radarr
+	if p.config.UseRadarr && p.radarrClient != nil {
+		if p.config.VerboseLogging {
+			fmt.Printf("   🎬 Checking Radarr for movie match...\n")
+		}
+		
+		// Try to match by title and year first
+		if p.config.VerboseLogging {
+			fmt.Printf("      → Searching by title: \"%s\" year: %d\n", item.GetTitle(), item.GetYear())
+		}
+		movie, err := p.radarrClient.FindMovieMatch(item.GetTitle(), item.GetYear())
+		if err == nil && movie != nil {
+			tmdbID := p.radarrClient.GetTMDbIDFromMovie(movie)
+			if p.config.VerboseLogging {
+				fmt.Printf("      ✅ Found match in Radarr: %s (TMDb: %s)\n", movie.Title, tmdbID)
+			}
+			return tmdbID
+		} else if p.config.VerboseLogging {
+			fmt.Printf("      ❌ No match found by title/year\n")
+		}
+		
+		// Try to match by file path
+		if p.config.VerboseLogging {
+			fmt.Printf("      → Searching by file path...\n")
+		}
+		for _, mediaItem := range item.GetMedia() {
+			for _, part := range mediaItem.Part {
+				if p.config.VerboseLogging {
+					fmt.Printf("         - Checking: %s\n", part.File)
+				}
+				movie, err := p.radarrClient.GetMovieByPath(part.File)
+				if err == nil && movie != nil {
+					tmdbID := p.radarrClient.GetTMDbIDFromMovie(movie)
+					if p.config.VerboseLogging {
+						fmt.Printf("      ✅ Found match by file path: %s (TMDb: %s)\n", movie.Title, tmdbID)
+					}
+					return tmdbID
+				}
+			}
+		}
+		if p.config.VerboseLogging {
+			fmt.Printf("      ❌ No match found by file path\n")
+		}
+		
+		// Try to match by IMDb ID if available
+		for _, guid := range item.GetGuid() {
+			if strings.Contains(guid.ID, "imdb://") {
+				imdbID := strings.TrimPrefix(guid.ID, "imdb://")
+				if p.config.VerboseLogging {
+					fmt.Printf("      → Searching by IMDb ID: %s\n", imdbID)
+				}
+				movie, err := p.radarrClient.GetMovieByIMDbID(imdbID)
+				if err == nil && movie != nil {
+					tmdbID := p.radarrClient.GetTMDbIDFromMovie(movie)
+					if p.config.VerboseLogging {
+						fmt.Printf("      ✅ Found match by IMDb ID: %s (TMDb: %s)\n", movie.Title, tmdbID)
+					}
+					return tmdbID
+				} else if p.config.VerboseLogging {
+					fmt.Printf("      ❌ No match found by IMDb ID\n")
+				}
+			}
+		}
+	}
+
+	// If not found in Radarr or Radarr not enabled, try to extract from file paths
+	if p.config.VerboseLogging {
+		fmt.Printf("   📁 Checking file paths for TMDb ID pattern...\n")
+	}
 	for _, mediaItem := range item.GetMedia() {
 		for _, part := range mediaItem.Part {
+			if p.config.VerboseLogging {
+				fmt.Printf("      - Checking: %s\n", part.File)
+			}
 			if tmdbID := ExtractTMDbIDFromPath(part.File); tmdbID != "" {
+				if p.config.VerboseLogging {
+					fmt.Printf("      ✅ Found TMDb ID in file path: %s\n", tmdbID)
+				}
 				return tmdbID
 			}
 		}
+	}
+	
+	if p.config.VerboseLogging {
+		fmt.Printf("   ❌ No TMDb ID found for movie: %s\n", item.GetTitle())
 	}
 
 	return ""
@@ -468,32 +649,198 @@ func (p *Processor) extractMovieTMDbID(item MediaItem) string {
 
 // extractTVShowTMDbID extracts TMDb ID from TV show metadata or episode file paths
 func (p *Processor) extractTVShowTMDbID(item MediaItem) string {
+	if p.config.VerboseLogging {
+		fmt.Printf("\n🔍 Starting TMDb ID lookup for TV show: %s (%d)\n", item.GetTitle(), item.GetYear())
+		fmt.Printf("   📋 Available Plex GUIDs:\n")
+		for _, guid := range item.GetGuid() {
+			fmt.Printf("      - %s\n", guid.ID)
+		}
+	}
+	
 	// First check if we have TMDb GUID in the TV show metadata
 	for _, guid := range item.GetGuid() {
 		if strings.HasPrefix(guid.ID, "tmdb://") {
-			return strings.TrimPrefix(guid.ID, "tmdb://")
+			tmdbID := strings.TrimPrefix(guid.ID, "tmdb://")
+			if p.config.VerboseLogging {
+				fmt.Printf("   ✅ Found TMDb ID in Plex metadata: %s\n", tmdbID)
+			}
+			return tmdbID
 		}
 	}
 
-	// If no TMDb GUID found, get episodes and check their file paths
+	// If Sonarr is enabled, try to match via Sonarr
+	if p.config.UseSonarr && p.sonarrClient != nil {
+		if p.config.VerboseLogging {
+			fmt.Printf("   📺 Checking Sonarr for series match...\n")
+		}
+		
+		// Try to match by title and year first
+		if p.config.VerboseLogging {
+			fmt.Printf("      → Searching by title: \"%s\" year: %d\n", item.GetTitle(), item.GetYear())
+		}
+		series, err := p.sonarrClient.FindSeriesMatch(item.GetTitle(), item.GetYear())
+		if err == nil && series != nil {
+			tmdbID := p.sonarrClient.GetTMDbIDFromSeries(series)
+			if p.config.VerboseLogging {
+				fmt.Printf("      ✅ Found match in Sonarr: %s (TMDb: %s)\n", series.Title, tmdbID)
+			}
+			return tmdbID
+		} else if p.config.VerboseLogging {
+			fmt.Printf("      ❌ No match found by title/year\n")
+		}
+		
+		// Try to match by TVDb ID if available
+		for _, guid := range item.GetGuid() {
+			if strings.Contains(guid.ID, "tvdb://") {
+				tvdbIDStr := strings.TrimPrefix(guid.ID, "tvdb://")
+				// Parse TVDb ID to int
+				var tvdbID int
+				if _, err := fmt.Sscanf(tvdbIDStr, "%d", &tvdbID); err == nil {
+					if p.config.VerboseLogging {
+						fmt.Printf("      → Searching by TVDb ID: %d\n", tvdbID)
+					}
+					series, err := p.sonarrClient.GetSeriesByTVDbID(tvdbID)
+					if err == nil && series != nil {
+						tmdbID := p.sonarrClient.GetTMDbIDFromSeries(series)
+						if p.config.VerboseLogging {
+							fmt.Printf("      ✅ Found match by TVDb ID: %s (TMDb: %s)\n", series.Title, tmdbID)
+						}
+						return tmdbID
+					} else if p.config.VerboseLogging {
+						fmt.Printf("      ❌ No match found by TVDb ID\n")
+					}
+				}
+			}
+		}
+		
+		// Try to match by IMDb ID if available
+		for _, guid := range item.GetGuid() {
+			if strings.Contains(guid.ID, "imdb://") {
+				imdbID := strings.TrimPrefix(guid.ID, "imdb://")
+				if p.config.VerboseLogging {
+					fmt.Printf("      → Searching by IMDb ID: %s\n", imdbID)
+				}
+				series, err := p.sonarrClient.GetSeriesByIMDbID(imdbID)
+				if err == nil && series != nil {
+					tmdbID := p.sonarrClient.GetTMDbIDFromSeries(series)
+					if p.config.VerboseLogging {
+						fmt.Printf("      ✅ Found match by IMDb ID: %s (TMDb: %s)\n", series.Title, tmdbID)
+					}
+					return tmdbID
+				} else if p.config.VerboseLogging {
+					fmt.Printf("      ❌ No match found by IMDb ID\n")
+				}
+			}
+		}
+		
+		// Try to match by file path from episodes
+		if p.config.VerboseLogging {
+			fmt.Printf("      → Searching by episode file paths...\n")
+		}
+		episodes, err := p.plexClient.GetTVShowEpisodes(item.GetRatingKey())
+		if err == nil {
+			episodeCount := 0
+			for _, episode := range episodes {
+				for _, mediaItem := range episode.Media {
+					for _, part := range mediaItem.Part {
+						episodeCount++
+						if episodeCount <= 5 && p.config.VerboseLogging {
+							fmt.Printf("         - Checking: %s\n", part.File)
+						}
+						series, err := p.sonarrClient.GetSeriesByPath(part.File)
+						if err == nil && series != nil {
+							tmdbID := p.sonarrClient.GetTMDbIDFromSeries(series)
+							if p.config.VerboseLogging {
+								fmt.Printf("      ✅ Found match by file path: %s (TMDb: %s)\n", series.Title, tmdbID)
+							}
+							return tmdbID
+						}
+					}
+				}
+			}
+			if episodeCount > 5 && p.config.VerboseLogging {
+				fmt.Printf("         ... and %d more episodes\n", episodeCount-5)
+			}
+			if p.config.VerboseLogging {
+				fmt.Printf("      ❌ No match found by file path\n")
+			}
+		} else if p.config.VerboseLogging {
+			fmt.Printf("      ⚠️ Could not fetch episodes: %v\n", err)
+		}
+	}
+
+	// If no TMDb GUID found and Sonarr not enabled, get episodes and check their file paths
+	if p.config.VerboseLogging {
+		fmt.Printf("   📁 Checking episode file paths for TMDb ID pattern...\n")
+	}
 	episodes, err := p.plexClient.GetTVShowEpisodes(item.GetRatingKey())
 	if err != nil {
-		fmt.Printf("⚠️ Error fetching episodes for %s: %v\n", item.GetTitle(), err)
+		if p.config.VerboseLogging {
+			fmt.Printf("   ⚠️ Error fetching episodes: %v\n", err)
+		} else {
+			fmt.Printf("⚠️ Error fetching episodes for %s: %v\n", item.GetTitle(), err)
+		}
 		return ""
 	}
 
 	// Check file paths in episodes for TMDb ID - stop at first match
+	episodeCount := 0
 	for _, episode := range episodes {
 		for _, mediaItem := range episode.Media {
 			for _, part := range mediaItem.Part {
+				episodeCount++
+				if episodeCount <= 5 && p.config.VerboseLogging {
+					fmt.Printf("      - Checking: %s\n", part.File)
+				}
 				if tmdbID := ExtractTMDbIDFromPath(part.File); tmdbID != "" {
+					if p.config.VerboseLogging {
+						fmt.Printf("      ✅ Found TMDb ID in file path: %s\n", tmdbID)
+					}
 					return tmdbID
 				}
 			}
 		}
 	}
+	
+	if episodeCount > 5 && p.config.VerboseLogging {
+		fmt.Printf("      ... and %d more episodes\n", episodeCount-5)
+	}
+	
+	if p.config.VerboseLogging {
+		fmt.Printf("   ❌ No TMDb ID found for TV show: %s\n", item.GetTitle())
+	}
 
 	return ""
+}
+
+// getTMDbIDSource determines the source of the TMDb ID
+func (p *Processor) getTMDbIDSource(item MediaItem, mediaType MediaType, tmdbID string) string {
+	// Check if it's from Plex metadata
+	for _, guid := range item.GetGuid() {
+		if strings.Contains(guid.ID, "tmdb://") {
+			return "Plex metadata"
+		}
+	}
+	
+	// Check if it could be from Radarr/Sonarr
+	if mediaType == MediaTypeMovie && p.config.UseRadarr && p.radarrClient != nil {
+		// Quick check if movie exists in Radarr with this TMDb ID
+		movie, err := p.radarrClient.FindMovieMatch(item.GetTitle(), item.GetYear())
+		if err == nil && movie != nil && p.radarrClient.GetTMDbIDFromMovie(movie) == tmdbID {
+			return "Radarr"
+		}
+	}
+	
+	if mediaType == MediaTypeTV && p.config.UseSonarr && p.sonarrClient != nil {
+		// Quick check if series exists in Sonarr with this TMDb ID
+		series, err := p.sonarrClient.FindSeriesMatch(item.GetTitle(), item.GetYear())
+		if err == nil && series != nil && p.sonarrClient.GetTMDbIDFromSeries(series) == tmdbID {
+			return "Sonarr"
+		}
+	}
+	
+	// Must be from file path
+	return "file path"
 }
 
 // ExtractTMDbIDFromPath extracts TMDb ID from file path using regex
