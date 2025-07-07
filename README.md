@@ -3,7 +3,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/nullable-eth/labelarr?style=flat-square)](https://github.com/nullable-eth/labelarr/releases/latest)
 [![Docker Image](https://img.shields.io/badge/docker-ghcr.io-blue?style=flat-square&logo=docker)](https://github.com/nullable-eth/labelarr/pkgs/container/labelarr)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/nullable-eth/labelarr?style=flat-square)](https://golang.org/)
-[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/nullable-eth/labelarr/docker-publish.yml?branch=main&style=flat-square)](https://github.com/nullable-eth/labelarr/actions)
+[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/nullable-eth/labelarr/release.yml?branch=main&style=flat-square)](https://github.com/nullable-eth/labelarr/actions)
 
 **Automatically sync TMDb keywords as Plex labels or genres for movies and TV shows**  
 Lightweight Docker container that bridges Plex with The Movie Database, adding searchable keywords to your media.
