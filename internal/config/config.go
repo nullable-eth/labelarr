@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -21,25 +22,30 @@ type Config struct {
 	RemoveMode          string
 	TMDbReadAccessToken string
 	ProcessTimer        time.Duration
-	
+
 	// Radarr configuration
 	RadarrURL    string
 	RadarrAPIKey string
 	UseRadarr    bool
-	
+
 	// Sonarr configuration
 	SonarrURL    string
 	SonarrAPIKey string
 	UseSonarr    bool
-	
+
 	// Logging configuration
 	VerboseLogging bool
-	
+
 	// Storage configuration
 	DataDir string
-	
+
 	// Force update configuration
 	ForceUpdate bool
+
+	// Export configuration
+	ExportLabels   []string
+	ExportLocation string
+	ExportMode     string
 }
 
 // Load loads configuration from environment variables
@@ -56,25 +62,30 @@ func Load() *Config {
 		RemoveMode:          os.Getenv("REMOVE"),
 		TMDbReadAccessToken: os.Getenv("TMDB_READ_ACCESS_TOKEN"),
 		ProcessTimer:        getProcessTimerFromEnv(),
-		
+
 		// Radarr configuration
 		RadarrURL:    os.Getenv("RADARR_URL"),
 		RadarrAPIKey: os.Getenv("RADARR_API_KEY"),
 		UseRadarr:    getBoolEnvWithDefault("USE_RADARR", false),
-		
+
 		// Sonarr configuration
 		SonarrURL:    os.Getenv("SONARR_URL"),
 		SonarrAPIKey: os.Getenv("SONARR_API_KEY"),
 		UseSonarr:    getBoolEnvWithDefault("USE_SONARR", false),
-		
+
 		// Logging configuration
 		VerboseLogging: getBoolEnvWithDefault("VERBOSE_LOGGING", false),
-		
+
 		// Storage configuration
 		DataDir: getEnvWithDefault("DATA_DIR", "/data"),
-		
+
 		// Force update configuration
 		ForceUpdate: getBoolEnvWithDefault("FORCE_UPDATE", false),
+
+		// Export configuration
+		ExportLabels:   parseExportLabels(os.Getenv("EXPORT_LABELS")),
+		ExportLocation: os.Getenv("EXPORT_LOCATION"),
+		ExportMode:     getEnvWithDefault("EXPORT_MODE", "txt"),
 	}
 
 	// Set protocol based on HTTPS requirement
@@ -122,7 +133,10 @@ func (c *Config) Validate() error {
 	if c.RemoveMode != "" && c.RemoveMode != "lock" && c.RemoveMode != "unlock" {
 		return fmt.Errorf("REMOVE must be 'lock' or 'unlock'")
 	}
-	
+	if c.ExportMode != "txt" && c.ExportMode != "json" {
+		return fmt.Errorf("EXPORT_MODE must be 'txt' or 'json'")
+	}
+
 	// Validate Radarr configuration if enabled
 	if c.UseRadarr {
 		if c.RadarrURL == "" {
@@ -132,7 +146,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("RADARR_API_KEY environment variable is required when USE_RADARR is true")
 		}
 	}
-	
+
 	// Validate Sonarr configuration if enabled
 	if c.UseSonarr {
 		if c.SonarrURL == "" {
@@ -142,7 +156,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("SONARR_API_KEY environment variable is required when USE_SONARR is true")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -172,4 +186,25 @@ func getBoolEnvWithDefault(envVar string, defaultValue bool) bool {
 		return defaultValue
 	}
 	return result
+}
+
+func parseExportLabels(labels string) []string {
+	if labels == "" {
+		return nil
+	}
+	// Split and trim whitespace from each label
+	rawLabels := strings.Split(labels, ",")
+	var cleanLabels []string
+	for _, label := range rawLabels {
+		trimmed := strings.TrimSpace(label)
+		if trimmed != "" {
+			cleanLabels = append(cleanLabels, trimmed)
+		}
+	}
+	return cleanLabels
+}
+
+// HasExportEnabled returns true if export functionality is enabled
+func (c *Config) HasExportEnabled() bool {
+	return len(c.ExportLabels) > 0 && c.ExportLocation != ""
 }

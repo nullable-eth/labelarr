@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nullable-eth/labelarr/internal/config"
+	"github.com/nullable-eth/labelarr/internal/export"
 	"github.com/nullable-eth/labelarr/internal/plex"
 	"github.com/nullable-eth/labelarr/internal/radarr"
 	"github.com/nullable-eth/labelarr/internal/sonarr"
@@ -44,6 +45,7 @@ type Processor struct {
 	radarrClient *radarr.Client
 	sonarrClient *sonarr.Client
 	storage      *storage.Storage
+	exporter     *export.Exporter
 }
 
 // NewProcessor creates a new generic media processor
@@ -53,7 +55,7 @@ func NewProcessor(cfg *config.Config, plexClient *plex.Client, tmdbClient *tmdb.
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
-	
+
 	processor := &Processor{
 		config:       cfg,
 		plexClient:   plexClient,
@@ -62,18 +64,34 @@ func NewProcessor(cfg *config.Config, plexClient *plex.Client, tmdbClient *tmdb.
 		sonarrClient: sonarrClient,
 		storage:      stor,
 	}
-	
+
+	// Initialize exporter if export is enabled
+	if cfg.HasExportEnabled() {
+		exporter, err := export.NewExporter(cfg.ExportLocation, cfg.ExportLabels, cfg.ExportMode)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize exporter: %w", err)
+		}
+		processor.exporter = exporter
+
+		fmt.Printf("📤 Export enabled: Writing file paths for labels %v to %s\n", cfg.ExportLabels, cfg.ExportLocation)
+	}
+
 	// Log storage initialization
 	count := stor.Count()
 	if count > 0 {
 		fmt.Printf("📁 Loaded %d previously processed items from storage\n", count)
 	}
-	
+
 	return processor, nil
 }
 
+// GetExporter returns the exporter instance if export is enabled
+func (p *Processor) GetExporter() *export.Exporter {
+	return p.exporter
+}
+
 // ProcessAllItems processes all items in the specified library
-func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error {
+func (p *Processor) ProcessAllItems(libraryID string, libraryName string, mediaType MediaType) error {
 	var displayName, emoji string
 	switch mediaType {
 	case MediaTypeMovie:
@@ -88,6 +106,13 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 
 	fmt.Printf("📋 Fetching all %s from library...\n", displayName)
 
+	// Set current library in exporter if export is enabled
+	if p.exporter != nil {
+		if err := p.exporter.SetCurrentLibrary(libraryName); err != nil {
+			fmt.Printf("⚠️ Warning: Failed to set current library for export: %v\n", err)
+		}
+	}
+
 	items, err := p.fetchItems(libraryID, mediaType)
 	if err != nil {
 		return fmt.Errorf("error fetching %s: %w", displayName, err)
@@ -100,11 +125,11 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 
 	totalCount := len(items)
 	fmt.Printf("✅ Found %d %s in library\n", totalCount, displayName)
-	
+
 	if p.config.ForceUpdate {
 		fmt.Printf("🔄 FORCE UPDATE MODE: All items will be reprocessed regardless of previous processing\n")
 	}
-	
+
 	if p.config.VerboseLogging {
 		fmt.Printf("🔎 Starting detailed processing with verbose logging enabled...\n")
 	} else {
@@ -115,18 +140,18 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 	updatedItems := 0
 	skippedItems := 0
 	skippedAlreadyExist := 0
-	
+
 	// Progress tracking
 	processedCount := 0
 	lastProgressReport := 0
 
 	for _, item := range items {
 		processedCount++
-		
+
 		// Show progress for large libraries
 		if totalCount > 100 {
 			progress := (processedCount * 100) / totalCount
-			if progress >= lastProgressReport + 10 {
+			if progress >= lastProgressReport+10 {
 				fmt.Printf("📊 Progress: %d%% (%d/%d %s processed)\n", progress, processedCount, totalCount, displayName)
 				lastProgressReport = progress
 			}
@@ -141,6 +166,26 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 		// Silently check if we need to process this item
 		tmdbID := p.extractTMDbID(item, mediaType)
 		if tmdbID == "" {
+			// Still try to export if export is enabled, even without TMDb ID
+			if p.exporter != nil {
+				details, err := p.getItemDetails(item.GetRatingKey(), mediaType)
+				if err == nil {
+					// Extract current labels for export
+					currentLabels := p.extractCurrentValues(details)
+
+					// Extract file paths and sizes
+					fileInfos, err := p.extractFileInfos(details, mediaType)
+					if err == nil && len(fileInfos) > 0 {
+						// Accumulate the item for export
+						if err := p.exporter.ExportItemWithSizes(item.GetTitle(), currentLabels, fileInfos); err == nil {
+							if p.config.VerboseLogging {
+								fmt.Printf("   📤 Accumulated %d file paths for %s (no TMDb ID)\n", len(fileInfos), item.GetTitle())
+							}
+						}
+					}
+				}
+			}
+
 			skippedItems++
 			if p.config.VerboseLogging && skippedItems <= 10 {
 				fmt.Printf("   ⏭️ Skipped %s: %s (%d) - No TMDb ID found\n", strings.TrimSuffix(displayName, "s"), item.GetTitle(), item.GetYear())
@@ -157,7 +202,7 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 			skippedItems++
 			continue
 		}
-		
+
 		if p.config.VerboseLogging {
 			fmt.Printf("   📥 Fetched %d keywords from TMDb: %v\n", len(keywords), keywords)
 		}
@@ -195,17 +240,41 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 			if p.config.VerboseLogging {
 				fmt.Printf("   ✨ Already has all keywords, skipping\n")
 			}
+
+			// Still export if export is enabled, even if no keyword updates are needed
+			if p.exporter != nil {
+				// Extract current labels for export
+				currentLabels := p.extractCurrentValues(details)
+
+				// Extract file paths and sizes
+				fileInfos, err := p.extractFileInfos(details, mediaType)
+				if err != nil {
+					if p.config.VerboseLogging {
+						fmt.Printf("   ⚠️ Warning: Could not extract file paths for export: %v\n", err)
+					}
+				} else if len(fileInfos) > 0 {
+					// Accumulate the item for export
+					if err := p.exporter.ExportItemWithSizes(item.GetTitle(), currentLabels, fileInfos); err != nil {
+						if p.config.VerboseLogging {
+							fmt.Printf("   ⚠️ Warning: Export accumulation failed for %s: %v\n", item.GetTitle(), err)
+						}
+					} else if p.config.VerboseLogging {
+						fmt.Printf("   📤 Accumulated %d file paths for %s (already had keywords)\n", len(fileInfos), item.GetTitle())
+					}
+				}
+			}
+
 			skippedItems++
 			skippedAlreadyExist++
 			continue
 		}
-		
+
 		if p.config.ForceUpdate && allKeywordsExist {
 			if p.config.VerboseLogging {
 				fmt.Printf("   🔄 Force update enabled - reprocessing item with existing keywords\n")
 			}
 		}
-		
+
 		if p.config.VerboseLogging {
 			fmt.Printf("   🆕 Missing keywords to add: %v\n", missingKeywords)
 		}
@@ -213,13 +282,13 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 		// Only show verbose output for completely new items (never processed before)
 		if !exists {
 			fmt.Printf("\n%s Processing new %s: %s (%d)\n", emoji, strings.TrimSuffix(displayName, "s"), item.GetTitle(), item.GetYear())
-			
+
 			// Show source of TMDb ID
 			source := p.getTMDbIDSource(item, mediaType, tmdbID)
 			fmt.Printf("🔑 TMDb ID: %s (source: %s)\n", tmdbID, source)
 			fmt.Printf("🏷️ Found %d TMDb keywords\n", len(keywords))
 		}
-		
+
 		// Show when we're about to apply labels/genres
 		if p.config.VerboseLogging || !exists {
 			fmt.Printf("🔄 Applying %d keywords to %s field...\n", len(keywords), p.config.UpdateField)
@@ -238,10 +307,41 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 			skippedItems++
 			continue
 		}
-		
+
 		// Show success message when labels/genres are applied
 		if p.config.VerboseLogging || !exists {
 			fmt.Printf("✅ Successfully applied %d keywords to Plex %s field\n", len(keywords), p.config.UpdateField)
+		}
+
+		// Export file paths if export is enabled
+		if p.exporter != nil {
+			// Get updated item details to get current labels
+			updatedDetails, err := p.getItemDetails(item.GetRatingKey(), mediaType)
+			if err != nil {
+				if p.config.VerboseLogging {
+					fmt.Printf("   ⚠️ Warning: Could not get updated details for export: %v\n", err)
+				}
+			} else {
+				// Extract current labels for export
+				currentLabels := p.extractCurrentValues(updatedDetails)
+
+				// Extract file paths and sizes
+				fileInfos, err := p.extractFileInfos(updatedDetails, mediaType)
+				if err != nil {
+					if p.config.VerboseLogging {
+						fmt.Printf("   ⚠️ Warning: Could not extract file paths for export: %v\n", err)
+					}
+				} else if len(fileInfos) > 0 {
+					// Accumulate the item for export
+					if err := p.exporter.ExportItemWithSizes(item.GetTitle(), currentLabels, fileInfos); err != nil {
+						if p.config.VerboseLogging {
+							fmt.Printf("   ⚠️ Warning: Export accumulation failed for %s: %v\n", item.GetTitle(), err)
+						}
+					} else if p.config.VerboseLogging {
+						fmt.Printf("   📤 Accumulated %d file paths for %s\n", len(fileInfos), item.GetTitle())
+					}
+				}
+			}
 		}
 
 		processedItem := &storage.ProcessedItem{
@@ -252,7 +352,7 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 			KeywordsSynced: true,
 			UpdateField:    p.config.UpdateField,
 		}
-		
+
 		if err := p.storage.Set(processedItem); err != nil {
 			fmt.Printf("⚠️ Warning: Failed to save processed item to storage: %v\n", err)
 		}
@@ -266,10 +366,10 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 
 		time.Sleep(500 * time.Millisecond)
 	}
-	
+
 	// Show verbose summary if items were skipped
 	if p.config.VerboseLogging && skippedItems > 10 {
-		fmt.Printf("   ... and %d more items skipped\n", skippedItems - 10)
+		fmt.Printf("   ... and %d more items skipped\n", skippedItems-10)
 	}
 
 	fmt.Printf("\n📊 Processing Summary:\n")
@@ -279,6 +379,28 @@ func (p *Processor) ProcessAllItems(libraryID string, mediaType MediaType) error
 	fmt.Printf("  ⏭️ Skipped %s: %d\n", displayName, skippedItems)
 	if skippedAlreadyExist > 0 {
 		fmt.Printf("  ✨ Already have all keywords: %d\n", skippedAlreadyExist)
+	}
+
+	// Show export summary if export is enabled
+	if p.exporter != nil {
+		librarySummary, err := p.exporter.GetLibraryExportSummary()
+		if err != nil {
+			fmt.Printf("  ⚠️ Export summary error: %v\n", err)
+		} else {
+			fmt.Printf("\n📤 Export Summary for %s:\n", libraryName)
+			totalAccumulated := 0
+
+			// Show current library summary
+			currentLibrary := p.exporter.GetCurrentLibrary()
+			if librarySummary[currentLibrary] != nil {
+				for label, count := range librarySummary[currentLibrary] {
+					fmt.Printf("  📁 %s: %d file paths accumulated\n", label, count)
+					totalAccumulated += count
+				}
+			}
+
+			fmt.Printf("📊 Total accumulated in this library: %d file paths\n", totalAccumulated)
+		}
 	}
 
 	return nil
@@ -458,7 +580,7 @@ func (p *Processor) syncFieldWithKeywords(itemID, libraryID string, currentValue
 	// Clean duplicates: remove old unnormalized versions when normalized versions are present
 	// This helps clean up cases like having both "sci-fi" and "Sci-Fi"
 	cleanedValues := utils.CleanDuplicateKeywords(currentValues, keywords)
-	
+
 	if p.config.VerboseLogging && len(cleanedValues) != len(currentValues) {
 		removedCount := len(currentValues) - len(cleanedValues) + len(keywords)
 		fmt.Printf("   🧹 Cleaned %d duplicate/unnormalized keywords\n", removedCount)
@@ -542,7 +664,7 @@ func (p *Processor) extractMovieTMDbID(item MediaItem) string {
 			fmt.Printf("      - %s\n", guid.ID)
 		}
 	}
-	
+
 	// First, try to get TMDb ID from Plex metadata
 	for _, guid := range item.GetGuid() {
 		if strings.Contains(guid.ID, "tmdb://") {
@@ -562,7 +684,7 @@ func (p *Processor) extractMovieTMDbID(item MediaItem) string {
 		if p.config.VerboseLogging {
 			fmt.Printf("   🎬 Checking Radarr for movie match...\n")
 		}
-		
+
 		// Try to match by title and year first
 		if p.config.VerboseLogging {
 			fmt.Printf("      → Searching by title: \"%s\" year: %d\n", item.GetTitle(), item.GetYear())
@@ -577,7 +699,7 @@ func (p *Processor) extractMovieTMDbID(item MediaItem) string {
 		} else if p.config.VerboseLogging {
 			fmt.Printf("      ❌ No match found by title/year\n")
 		}
-		
+
 		// Try to match by file path
 		if p.config.VerboseLogging {
 			fmt.Printf("      → Searching by file path...\n")
@@ -600,7 +722,7 @@ func (p *Processor) extractMovieTMDbID(item MediaItem) string {
 		if p.config.VerboseLogging {
 			fmt.Printf("      ❌ No match found by file path\n")
 		}
-		
+
 		// Try to match by IMDb ID if available
 		for _, guid := range item.GetGuid() {
 			if strings.Contains(guid.ID, "imdb://") {
@@ -639,7 +761,7 @@ func (p *Processor) extractMovieTMDbID(item MediaItem) string {
 			}
 		}
 	}
-	
+
 	if p.config.VerboseLogging {
 		fmt.Printf("   ❌ No TMDb ID found for movie: %s\n", item.GetTitle())
 	}
@@ -656,7 +778,7 @@ func (p *Processor) extractTVShowTMDbID(item MediaItem) string {
 			fmt.Printf("      - %s\n", guid.ID)
 		}
 	}
-	
+
 	// First check if we have TMDb GUID in the TV show metadata
 	for _, guid := range item.GetGuid() {
 		if strings.HasPrefix(guid.ID, "tmdb://") {
@@ -673,7 +795,7 @@ func (p *Processor) extractTVShowTMDbID(item MediaItem) string {
 		if p.config.VerboseLogging {
 			fmt.Printf("   📺 Checking Sonarr for series match...\n")
 		}
-		
+
 		// Try to match by title and year first
 		if p.config.VerboseLogging {
 			fmt.Printf("      → Searching by title: \"%s\" year: %d\n", item.GetTitle(), item.GetYear())
@@ -688,7 +810,7 @@ func (p *Processor) extractTVShowTMDbID(item MediaItem) string {
 		} else if p.config.VerboseLogging {
 			fmt.Printf("      ❌ No match found by title/year\n")
 		}
-		
+
 		// Try to match by TVDb ID if available
 		for _, guid := range item.GetGuid() {
 			if strings.Contains(guid.ID, "tvdb://") {
@@ -712,7 +834,7 @@ func (p *Processor) extractTVShowTMDbID(item MediaItem) string {
 				}
 			}
 		}
-		
+
 		// Try to match by IMDb ID if available
 		for _, guid := range item.GetGuid() {
 			if strings.Contains(guid.ID, "imdb://") {
@@ -732,7 +854,7 @@ func (p *Processor) extractTVShowTMDbID(item MediaItem) string {
 				}
 			}
 		}
-		
+
 		// Try to match by file path from episodes
 		if p.config.VerboseLogging {
 			fmt.Printf("      → Searching by episode file paths...\n")
@@ -801,11 +923,11 @@ func (p *Processor) extractTVShowTMDbID(item MediaItem) string {
 			}
 		}
 	}
-	
+
 	if episodeCount > 5 && p.config.VerboseLogging {
 		fmt.Printf("      ... and %d more episodes\n", episodeCount-5)
 	}
-	
+
 	if p.config.VerboseLogging {
 		fmt.Printf("   ❌ No TMDb ID found for TV show: %s\n", item.GetTitle())
 	}
@@ -821,7 +943,7 @@ func (p *Processor) getTMDbIDSource(item MediaItem, mediaType MediaType, tmdbID 
 			return "Plex metadata"
 		}
 	}
-	
+
 	// Check if it could be from Radarr/Sonarr
 	if mediaType == MediaTypeMovie && p.config.UseRadarr && p.radarrClient != nil {
 		// Quick check if movie exists in Radarr with this TMDb ID
@@ -830,7 +952,7 @@ func (p *Processor) getTMDbIDSource(item MediaItem, mediaType MediaType, tmdbID 
 			return "Radarr"
 		}
 	}
-	
+
 	if mediaType == MediaTypeTV && p.config.UseSonarr && p.sonarrClient != nil {
 		// Quick check if series exists in Sonarr with this TMDb ID
 		series, err := p.sonarrClient.FindSeriesMatch(item.GetTitle(), item.GetYear())
@@ -838,7 +960,7 @@ func (p *Processor) getTMDbIDSource(item MediaItem, mediaType MediaType, tmdbID 
 			return "Sonarr"
 		}
 	}
-	
+
 	// Must be from file path
 	return "file path"
 }
@@ -854,4 +976,61 @@ func ExtractTMDbIDFromPath(filePath string) string {
 		return matches[1]
 	}
 	return ""
+}
+
+// extractFilePaths extracts all file paths from a media item
+func (p *Processor) extractFilePaths(item MediaItem, mediaType MediaType) ([]string, error) {
+	fileInfos, err := p.extractFileInfos(item, mediaType)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert FileInfo back to paths for backwards compatibility
+	var filePaths []string
+	for _, fileInfo := range fileInfos {
+		filePaths = append(filePaths, fileInfo.Path)
+	}
+
+	return filePaths, nil
+}
+
+// extractFileInfos extracts all file paths and sizes from a media item
+func (p *Processor) extractFileInfos(item MediaItem, mediaType MediaType) ([]export.FileInfo, error) {
+	var fileInfos []export.FileInfo
+
+	switch mediaType {
+	case MediaTypeMovie:
+		// For movies, get file info directly from the media items
+		for _, media := range item.GetMedia() {
+			for _, part := range media.Part {
+				if part.File != "" {
+					fileInfos = append(fileInfos, export.FileInfo{
+						Path: part.File,
+						Size: part.Size,
+					})
+				}
+			}
+		}
+	case MediaTypeTV:
+		// For TV shows, get file info from all episodes (use GetAllTVShowEpisodes for export)
+		episodes, err := p.plexClient.GetAllTVShowEpisodes(item.GetRatingKey())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get all episodes for TV show %s: %w", item.GetTitle(), err)
+		}
+
+		for _, episode := range episodes {
+			for _, media := range episode.Media {
+				for _, part := range media.Part {
+					if part.File != "" {
+						fileInfos = append(fileInfos, export.FileInfo{
+							Path: part.File,
+							Size: part.Size,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return fileInfos, nil
 }

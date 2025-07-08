@@ -87,6 +87,7 @@ type Media struct {
 // Part represents a media part with file information
 type Part struct {
 	File string `json:"file,omitempty"`
+	Size int64  `json:"size,omitempty"`
 }
 
 // FlexibleGuid handles both string and array formats from Plex API

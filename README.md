@@ -20,13 +20,16 @@ services:
     image: ghcr.io/nullable-eth/labelarr:latest
     container_name: labelarr
     restart: unless-stopped
+    volumes:
+      - ./labelarr-data:/data
+      - ./exports:/data/exports  # Mount host directory for export files
     environment:
       # Required - Get from Plex Web (F12 → Network → X-Plex-Token)
       - PLEX_TOKEN=your_plex_token_here
       # Required - Get from https://www.themoviedb.org/settings/api
       - TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
       # Required - Your Plex server details
-      - PLEX_SERVER=localhost
+      - PLEX_SERVER=plex
       - PLEX_PORT=32400
       - PLEX_REQUIRES_HTTPS=true
       # Process all libraries (recommended for first-time users)
@@ -42,6 +45,9 @@ services:
       # - USE_SONARR=true
       # - SONARR_URL=http://sonarr:8989
       # - SONARR_API_KEY=your_sonarr_api_key
+      # Optional export functionality
+      # - EXPORT_LABELS=action,comedy,thriller,documentary,kids
+      # - EXPORT_LOCATION=/data/exports
 ```
 
 **Run:** `docker-compose up -d`
@@ -64,6 +70,7 @@ services:
 - **🔄 Force Update Mode** - Reprocess all items regardless of previous processing status
 - **🧹 Smart Duplicate Cleaning** - Automatically removes old unnormalized keywords when adding normalized versions
 - **🔒 Enhanced Error Handling** - Better authentication and connection testing
+- **📤 Export Functionality** - Generate file lists for specific labels to sync content or create backups
 
 ---
 
@@ -160,7 +167,13 @@ services:
 
 - `USE_SONARR=true` - Enable Sonarr integration (default: `false`)
 - `SONARR_URL=http://localhost:8989` - Your Sonarr instance URL
-- `SONARR_API_KEY=your_api_key` - Your Sonarr API key
+- `SONARR_API_KEY=your_sonarr_api_key` - Your Sonarr API key
+
+**Export Integration (Optional):**
+
+- `EXPORT_LABELS=action,comedy,thriller` - Comma-separated list of labels to export file paths for
+- `EXPORT_LOCATION=/path/to/export` - Directory where export files will be created
+- `EXPORT_MODE=txt` - Export format: `txt` (default) or `json`
 
 </details>
 
@@ -188,6 +201,13 @@ Labelarr now supports automatic TMDb ID detection through Radarr and Sonarr APIs
 - ✅ **Multiple matching methods** - Title, year, IMDb ID, TVDb ID, file path
 - ✅ **Automatic fallback** - If Radarr/Sonarr doesn't have the item, falls back to file path detection
 - ✅ **Optional integration** - Enable only if you use Radarr/Sonarr
+
+### ⚡ **Performance Considerations**
+
+- **File path detection is faster** - If your file paths consistently contain TMDb IDs, file path detection is significantly faster than API calls
+- **Radarr/Sonarr integration adds latency** - Each API lookup introduces network overhead and processing time
+- **Recommendation**: Use file path detection (with TMDb IDs in filenames/folders) as your primary method for best performance
+- **When to use APIs**: Only enable Radarr/Sonarr integration if your file paths don't contain TMDb IDs or are inconsistently formatted
 
 ### How It Works
 
@@ -291,6 +311,276 @@ The TMDb ID detection is very flexible and supports various formats:
 /movies/Underscore_tmdb_11111/file.mkv
 /movies/ExtraSuffix tmdb-22222_extra/file.mkv
 /movies/Direct tmdb194884 format/file.mkv
+```
+
+</details>
+
+<details id="export-functionality">
+<summary><h3 style="margin: 0; display: inline;">📤 Export Functionality</h3></summary>
+
+Labelarr can automatically export file paths for media items that have specific labels, creating organized lists perfect for syncing content to alternate locations or creating backup sets.
+
+### 🎯 **What It Does**
+
+- **Scans all processed media** for items containing specified labels
+- **Creates separate text files** for each export label (e.g., `action.txt`, `comedy.txt`)
+- **Lists full file paths** of matching movies and TV show episodes
+- **Updates files** after each processing run with current results
+- **Preserves existing files** until new export data is ready
+
+### 🔧 **Configuration**
+
+Add these environment variables to enable export functionality:
+
+```yaml
+environment:
+  # Specify which labels to export (comma-separated, case-insensitive)
+  - EXPORT_LABELS=action,comedy,thriller,documentary
+  # Directory where export files will be created
+  - EXPORT_LOCATION=/data/exports
+  # Export format: txt (default) creates separate files, json creates single comprehensive file
+  - EXPORT_MODE=txt
+  # ... other labelarr config ...
+```
+
+**Complete Docker Compose Example with Export:**
+
+```yaml
+services:
+  labelarr:
+    image: ghcr.io/nullable-eth/labelarr:latest
+    container_name: labelarr
+    restart: unless-stopped
+    volumes:
+      - ./labelarr-data:/data
+      - ./exports:/data/exports  # Mount host directory for export files
+    environment:
+      - PLEX_TOKEN=your_plex_token_here
+      - TMDB_READ_ACCESS_TOKEN=your_tmdb_token
+      - PLEX_SERVER=plex
+      - PLEX_PORT=32400
+      - MOVIE_PROCESS_ALL=true
+      - TV_PROCESS_ALL=true
+      # Export configuration
+      - EXPORT_LABELS=action,comedy,thriller,documentary,kids
+      - EXPORT_LOCATION=/data/exports
+      - EXPORT_MODE=txt
+```
+
+### 📁 **Output Example**
+
+With `EXPORT_LABELS=action,comedy,kids` and `EXPORT_LOCATION=/data/exports`, Labelarr will create library-specific subdirectories:
+
+#### **Text Mode (Default)**
+
+```
+/data/exports/
+├── summary.txt          # Detailed statistics and file sizes
+├── Movies/              # Movie library exports
+│   ├── action.txt       # Action movies only
+│   ├── comedy.txt       # Comedy movies only
+│   └── kids.txt         # Kids movies only
+└── TV Shows/            # TV show library exports
+    ├── action.txt       # Action TV shows only
+    ├── comedy.txt       # Comedy TV shows only
+    └── kids.txt         # Kids TV shows only
+```
+
+#### **JSON Mode**
+
+With `EXPORT_MODE=json`, Labelarr creates a single comprehensive JSON file:
+
+```
+/data/exports/
+└── export.json         # Complete export data with statistics
+```
+
+Each file contains full paths to matching media from that specific library:
+
+**Movies/action.txt:**
+
+```
+/data/movies/John Wick (2014)/John Wick (2014) (Bluray-1080p).mkv
+/data/movies/Mad Max Fury Road (2015)/Mad Max Fury Road (2015) (Bluray-2160p).mkv
+/data/movies/The Dark Knight (2008)/The Dark Knight (2008) (Bluray-2160p).mkv
+```
+
+**TV Shows/action.txt:**
+
+```
+/data/tv/Breaking Bad (2008)/Season 01/Breaking Bad S01E01 (1080p).mkv
+/data/tv/Breaking Bad (2008)/Season 01/Breaking Bad S01E02 (1080p).mkv
+/data/tv/24 (2001)/Season 01/24 S01E01 (1080p).mkv
+```
+
+**export.json structure:**
+
+```json
+{
+  "generated_at": "2024-01-15 14:30:25",
+  "export_mode": "json",
+  "libraries": {
+    "Movies": {
+      "action": [
+        {
+          "path": "/data/movies/John Wick (2014)/John Wick (2014) (Bluray-1080p).mkv",
+          "size": 4832716800
+        },
+        {
+          "path": "/data/movies/Mad Max Fury Road (2015)/Mad Max Fury Road (2015) (Bluray-2160p).mkv",
+          "size": 8945283072
+        }
+      ],
+      "comedy": [
+        {
+          "path": "/data/movies/The Hangover (2009)/The Hangover (2009) (Bluray-1080p).mkv",
+          "size": 3221225472
+        }
+      ]
+    },
+    "TV Shows": {
+      "action": [
+        {
+          "path": "/data/tv/Breaking Bad (2008)/Season 01/Breaking Bad S01E01 (1080p).mkv",
+          "size": 2147483648
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_files": 1247,
+    "total_size": 2748779069440,
+    "total_size_formatted": "2.5 TB",
+    "library_stats": {
+      "Movies": {
+        "total_files": 156,
+        "total_size": 790495232000,
+        "total_size_formatted": "736.0 GB",
+        "labels": {
+          "action": {
+            "count": 89,
+            "size": 478150656000,
+            "size_formatted": "445.2 GB"
+          },
+          "comedy": {
+            "count": 67,
+            "size": 312344576000,
+            "size_formatted": "290.8 GB"
+          }
+        }
+      }
+    },
+    "label_totals": {
+      "action": {
+        "count": 632,
+        "size": 1797564416000,
+        "size_formatted": "1.6 TB"
+      },
+      "comedy": {
+        "count": 615,
+        "size": 1052901376000,
+        "size_formatted": "980.3 GB"
+      }
+    }
+  }
+}
+```
+
+**summary.txt:**
+
+```
+Labelarr Export Summary
+Generated: 2024-01-15 14:30:25
+
+📁 Export Files Generated:
+  Movies/action.txt
+  Movies/comedy.txt
+  TV Shows/action.txt
+  TV Shows/comedy.txt
+
+📊 Overall Statistics:
+  Total files: 1,247
+  Total size: 2.5 TB (2,748,779,069,440 bytes)
+
+📚 Library Breakdown:
+
+  Movies:
+    action.txt: 89 files, 445.2 GB (478,150,656,000 bytes)
+    comedy.txt: 67 files, 290.8 GB (312,344,576,000 bytes)
+    Library total: 156 files, 736.0 GB (790,495,232,000 bytes)
+
+  TV Shows:
+    action.txt: 543 files, 1.2 TB (1,319,413,760,000 bytes)
+    comedy.txt: 548 files, 689.5 GB (740,556,800,000 bytes)
+    Library total: 1,091 files, 1.8 TB (2,059,970,560,000 bytes)
+
+🏷️ Label Totals (All Libraries):
+  action: 632 files, 1.6 TB (1,797,564,416,000 bytes)
+  comedy: 615 files, 980.3 GB (1,052,901,376,000 bytes)
+```
+
+### 🔄 **Use Cases**
+
+**Content Syncing:**
+
+- Export specific genres to sync to mobile devices or remote locations
+- Create curated collections for different family members
+- Sync action movies to gaming setup, kids content to tablets
+- **Sync specific content to alternate Plex servers** for distributed media setups
+- **Separate movie and TV exports** for different sync destinations
+- **JSON format for programmatic processing** of export data with file sizes and metadata
+
+**Backup Management:**
+
+- Generate lists of premium content for priority backup
+- Create separate backup sets by genre or rating
+- Export documentary collections for educational archives
+- **Create targeted backup lists** for specific movies/TV shows
+- **Library-specific backup strategies** (movies vs TV shows)
+- **JSON export for automated backup tools** that need file size information
+
+**Media Organization:**
+
+- Generate playlists for external media players
+- Create file lists for batch operations (transcoding, moving, etc.)
+- Export specific content types for different storage tiers
+- **Organize exports by library type** for easier management
+- **API integration with JSON format** for custom media management tools
+
+### 🚀 **Performance**
+
+- **Memory efficient**: Accumulates paths during processing, writes once at completion
+- **Atomic updates**: Existing export files preserved until new data is ready
+- **Minimal overhead**: Only ~2-5 MB RAM usage for large libraries (10K+ items)
+
+### 💡 **Tips**
+
+- **Label names are case-insensitive**: `Action`, `action`, and `ACTION` all match
+- **Multiple labels per item**: Movies with both "action" and "comedy" labels appear in both export files
+- **Empty files created**: Labels with no matches still get empty `.txt` files for consistency (text mode)
+- **File paths included**: Both movie files and all TV show episode files are included
+- **Library separation**: Files are organized by Plex library (e.g., `Movies/action.txt` vs `TV Shows/action.txt`) in text mode
+- **Library names sanitized**: Special characters in library names are replaced with underscores for valid folder names
+- **Summary statistics**: `summary.txt` provides detailed file counts, sizes, and breakdowns by library and label (text mode)
+- **File sizes from Plex**: Uses Plex metadata for accurate file sizes without filesystem access
+- **JSON export includes everything**: Single file with all data, file sizes, and comprehensive statistics
+- **Choose format based on use case**: Use `txt` for simple file lists, `json` for programmatic processing
+
+### ⚠️ **Important Notes**
+
+**Container File Paths:**
+
+- Exported file paths reflect your **Plex container's internal file system**
+- If using volume mounts (e.g., `-v /host/media:/data/media`), paths may need processing
+- Example: Plex sees `/data/media/movies/...` but host filesystem has `/mnt/nas/movies/...`
+- Consider path mapping/replacement when using exported files outside the container environment
+
+**Path Processing Example:**
+
+```bash
+# If Plex container mounts: -v /mnt/nas/media:/data/media
+# Export shows: /data/media/movies/Action Movie.mkv
+# You may need: /mnt/nas/media/movies/Action Movie.mkv
 ```
 
 </details>
