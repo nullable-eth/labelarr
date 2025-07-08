@@ -26,14 +26,14 @@ func main() {
 	// Initialize clients
 	plexClient := plex.NewClient(cfg)
 	tmdbClient := tmdb.NewClient(cfg)
-	
+
 	// Test TMDb connection
 	if err := tmdbClient.TestConnection(); err != nil {
 		fmt.Printf("❌ Failed to connect to TMDb: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Println("✅ Successfully connected to TMDb")
-	
+
 	// Initialize Radarr client if enabled
 	var radarrClient *radarr.Client
 	if cfg.UseRadarr {
@@ -44,7 +44,7 @@ func main() {
 		}
 		fmt.Println("✅ Successfully connected to Radarr")
 	}
-	
+
 	// Initialize Sonarr client if enabled
 	var sonarrClient *sonarr.Client
 	if cfg.UseSonarr {
@@ -219,12 +219,20 @@ func handleNormalMode(cfg *config.Config, processor *media.Processor, movieLibra
 			if cfg.MovieProcessAll {
 				for _, lib := range movieLibraries {
 					fmt.Printf("🎬 Processing library: %s (ID: %s)\n", lib.Title, lib.Key)
-					if err := processor.ProcessAllItems(lib.Key, media.MediaTypeMovie); err != nil {
+					if err := processor.ProcessAllItems(lib.Key, lib.Title, media.MediaTypeMovie); err != nil {
 						fmt.Printf("❌ Error processing movies: %v\n", err)
 					}
 				}
 			} else if cfg.MovieLibraryID != "" {
-				if err := processor.ProcessAllItems(cfg.MovieLibraryID, media.MediaTypeMovie); err != nil {
+				// Find the library name for the specified ID
+				libraryName := "Movies" // Default fallback
+				for _, lib := range movieLibraries {
+					if lib.Key == cfg.MovieLibraryID {
+						libraryName = lib.Title
+						break
+					}
+				}
+				if err := processor.ProcessAllItems(cfg.MovieLibraryID, libraryName, media.MediaTypeMovie); err != nil {
 					fmt.Printf("❌ Error processing movies: %v\n", err)
 				}
 			}
@@ -235,13 +243,59 @@ func handleNormalMode(cfg *config.Config, processor *media.Processor, movieLibra
 			if cfg.TVProcessAll {
 				for _, lib := range tvLibraries {
 					fmt.Printf("📺 Processing TV library: %s (ID: %s)\n", lib.Title, lib.Key)
-					if err := processor.ProcessAllItems(lib.Key, media.MediaTypeTV); err != nil {
+					if err := processor.ProcessAllItems(lib.Key, lib.Title, media.MediaTypeTV); err != nil {
 						fmt.Printf("❌ Error processing TV shows: %v\n", err)
 					}
 				}
 			} else if cfg.TVLibraryID != "" {
-				if err := processor.ProcessAllItems(cfg.TVLibraryID, media.MediaTypeTV); err != nil {
+				// Find the library name for the specified ID
+				libraryName := "TV Shows" // Default fallback
+				for _, lib := range tvLibraries {
+					if lib.Key == cfg.TVLibraryID {
+						libraryName = lib.Title
+						break
+					}
+				}
+				if err := processor.ProcessAllItems(cfg.TVLibraryID, libraryName, media.MediaTypeTV); err != nil {
 					fmt.Printf("❌ Error processing TV shows: %v\n", err)
+				}
+			}
+		}
+
+		// Write all accumulated export files after processing all libraries
+		if cfg.HasExportEnabled() {
+			fmt.Printf("\n📤 Writing export files to %s...\n", cfg.ExportLocation)
+			if exporter := processor.GetExporter(); exporter != nil {
+				totalSummary, err := exporter.GetExportSummary()
+				if err != nil {
+					fmt.Printf("❌ Error getting export summary: %v\n", err)
+				} else {
+					totalAccumulated := 0
+					for label, count := range totalSummary {
+						if count > 0 {
+							fmt.Printf("  📁 %s: %d total file paths\n", label, count)
+						}
+						totalAccumulated += count
+					}
+
+					if totalAccumulated > 0 {
+						fmt.Printf("📝 Writing %d total file paths across all libraries...\n", totalAccumulated)
+						if err := exporter.FlushAll(); err != nil {
+							fmt.Printf("❌ Failed to write export files: %v\n", err)
+						} else {
+							fmt.Printf("✅ Successfully wrote export files to library subdirectories\n")
+							fmt.Printf("📊 Generated summary.txt with detailed statistics and file sizes\n")
+						}
+					} else {
+						fmt.Printf("📭 No matching items found for export labels\n")
+						// Still create empty files for each label in each library
+						if err := exporter.FlushAll(); err != nil {
+							fmt.Printf("❌ Failed to create export files: %v\n", err)
+						} else {
+							fmt.Printf("✅ Created empty export files in library subdirectories\n")
+							fmt.Printf("📊 Generated summary.txt with export statistics\n")
+						}
+					}
 				}
 			}
 		}
