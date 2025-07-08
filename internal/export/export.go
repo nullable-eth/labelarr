@@ -98,10 +98,12 @@ func (e *Exporter) SetCurrentLibrary(libraryName string) error {
 	sanitizedName := sanitizeFilename(libraryName)
 	e.currentLibrary = sanitizedName
 
-	// Create library-specific subdirectory if it doesn't exist
-	libraryPath := filepath.Join(e.exportLocation, sanitizedName)
-	if err := os.MkdirAll(libraryPath, 0755); err != nil {
-		return fmt.Errorf("failed to create library directory %s: %w", libraryPath, err)
+	// Only create library-specific subdirectory in txt mode
+	if e.exportMode == "txt" {
+		libraryPath := filepath.Join(e.exportLocation, sanitizedName)
+		if err := os.MkdirAll(libraryPath, 0755); err != nil {
+			return fmt.Errorf("failed to create library directory %s: %w", libraryPath, err)
+		}
 	}
 
 	// Initialize accumulated map for this library if it doesn't exist

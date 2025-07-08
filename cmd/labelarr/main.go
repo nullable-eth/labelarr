@@ -283,8 +283,12 @@ func handleNormalMode(cfg *config.Config, processor *media.Processor, movieLibra
 						if err := exporter.FlushAll(); err != nil {
 							fmt.Printf("❌ Failed to write export files: %v\n", err)
 						} else {
-							fmt.Printf("✅ Successfully wrote export files to library subdirectories\n")
-							fmt.Printf("📊 Generated summary.txt with detailed statistics and file sizes\n")
+							if cfg.ExportMode == "json" {
+								fmt.Printf("✅ Successfully wrote export data to export.json\n")
+							} else {
+								fmt.Printf("✅ Successfully wrote export files to library subdirectories\n")
+								fmt.Printf("📊 Generated summary.txt with detailed statistics and file sizes\n")
+							}
 						}
 					} else {
 						fmt.Printf("📭 No matching items found for export labels\n")
@@ -292,8 +296,12 @@ func handleNormalMode(cfg *config.Config, processor *media.Processor, movieLibra
 						if err := exporter.FlushAll(); err != nil {
 							fmt.Printf("❌ Failed to create export files: %v\n", err)
 						} else {
-							fmt.Printf("✅ Created empty export files in library subdirectories\n")
-							fmt.Printf("📊 Generated summary.txt with export statistics\n")
+							if cfg.ExportMode == "json" {
+								fmt.Printf("✅ Created empty export.json file\n")
+							} else {
+								fmt.Printf("✅ Created empty export files in library subdirectories\n")
+								fmt.Printf("📊 Generated summary.txt with export statistics\n")
+							}
 						}
 					}
 				}
