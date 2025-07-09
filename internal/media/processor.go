@@ -50,10 +50,14 @@ type Processor struct {
 
 // NewProcessor creates a new generic media processor
 func NewProcessor(cfg *config.Config, plexClient *plex.Client, tmdbClient *tmdb.Client, radarrClient *radarr.Client, sonarrClient *sonarr.Client) (*Processor, error) {
-	// Initialize persistent storage
-	stor, err := storage.NewStorage(cfg.DataDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize storage: %w", err)
+	// Initialize persistent storage only if DATA_DIR is set
+	var stor *storage.Storage
+	if cfg.DataDir != "" {
+		var err error
+		stor, err = storage.NewStorage(cfg.DataDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize storage: %w", err)
+		}
 	}
 
 	processor := &Processor{
@@ -77,9 +81,13 @@ func NewProcessor(cfg *config.Config, plexClient *plex.Client, tmdbClient *tmdb.
 	}
 
 	// Log storage initialization
-	count := stor.Count()
-	if count > 0 {
-		fmt.Printf("📁 Loaded %d previously processed items from storage\n", count)
+	if stor != nil {
+		count := stor.Count()
+		if count > 0 {
+			fmt.Printf("📁 Loaded %d previously processed items from storage\n", count)
+		}
+	} else {
+		fmt.Printf("🔄 Running in ephemeral mode - no persistent storage (set DATA_DIR to enable)\n")
 	}
 
 	return processor, nil
@@ -156,11 +164,16 @@ func (p *Processor) ProcessAllItems(libraryID string, libraryName string, mediaT
 				lastProgressReport = progress
 			}
 		}
-		processed, exists := p.storage.Get(item.GetRatingKey())
-		if exists && processed.KeywordsSynced && processed.UpdateField == p.config.UpdateField && !p.config.ForceUpdate {
-			skippedItems++
-			skippedAlreadyExist++
-			continue
+		// Check if already processed (only if storage is enabled)
+		var exists bool
+		if p.storage != nil {
+			processed, storageExists := p.storage.Get(item.GetRatingKey())
+			if storageExists && processed.KeywordsSynced && processed.UpdateField == p.config.UpdateField && !p.config.ForceUpdate {
+				skippedItems++
+				skippedAlreadyExist++
+				continue
+			}
+			exists = storageExists
 		}
 
 		// Silently check if we need to process this item
@@ -344,17 +357,20 @@ func (p *Processor) ProcessAllItems(libraryID string, libraryName string, mediaT
 			}
 		}
 
-		processedItem := &storage.ProcessedItem{
-			RatingKey:      item.GetRatingKey(),
-			Title:          item.GetTitle(),
-			TMDbID:         tmdbID,
-			LastProcessed:  time.Now(),
-			KeywordsSynced: true,
-			UpdateField:    p.config.UpdateField,
-		}
+		// Save processed item (only if storage is enabled)
+		if p.storage != nil {
+			processedItem := &storage.ProcessedItem{
+				RatingKey:      item.GetRatingKey(),
+				Title:          item.GetTitle(),
+				TMDbID:         tmdbID,
+				LastProcessed:  time.Now(),
+				KeywordsSynced: true,
+				UpdateField:    p.config.UpdateField,
+			}
 
-		if err := p.storage.Set(processedItem); err != nil {
-			fmt.Printf("⚠️ Warning: Failed to save processed item to storage: %v\n", err)
+			if err := p.storage.Set(processedItem); err != nil {
+				fmt.Printf("⚠️ Warning: Failed to save processed item to storage: %v\n", err)
+			}
 		}
 
 		if exists {

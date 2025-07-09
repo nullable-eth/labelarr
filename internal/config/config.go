@@ -77,7 +77,7 @@ func Load() *Config {
 		VerboseLogging: getBoolEnvWithDefault("VERBOSE_LOGGING", false),
 
 		// Storage configuration
-		DataDir: getEnvWithDefault("DATA_DIR", "/data"),
+		DataDir: os.Getenv("DATA_DIR"), // No default - ephemeral if not set
 
 		// Force update configuration
 		ForceUpdate: getBoolEnvWithDefault("FORCE_UPDATE", false),

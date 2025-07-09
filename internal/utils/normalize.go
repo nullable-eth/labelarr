@@ -100,49 +100,49 @@ var lowercaseWords = map[string]bool{
 
 // Critical replacements for well-known abbreviations and misspellings
 var criticalReplacements = map[string]string{
-	"sci-fi":                  "Sci-Fi",
-	"scifi":                   "Sci-Fi", 
-	"sci fi":                  "Sci-Fi",
-	"romcom":                  "Romantic Comedy",
-	"rom-com":                 "Romantic Comedy",
-	"bio-pic":                 "Biopic",
-	"bio pic":                 "Biopic",
-	"neo-noir":                "Neo-Noir",
-	"neo noir":                "Neo-Noir",
-	"duringcreditsstinger":    "During Credits Stinger",
-	"aftercreditsstinger":     "After Credits Stinger",
-	"midcreditsstinger":       "Mid Credits Stinger",
+	"sci-fi":               "Sci-Fi",
+	"scifi":                "Sci-Fi",
+	"sci fi":               "Sci-Fi",
+	"romcom":               "Romantic Comedy",
+	"rom-com":              "Romantic Comedy",
+	"bio-pic":              "Biopic",
+	"bio pic":              "Biopic",
+	"neo-noir":             "Neo-Noir",
+	"neo noir":             "Neo-Noir",
+	"duringcreditsstinger": "During Credits Stinger",
+	"aftercreditsstinger":  "After Credits Stinger",
+	"midcreditsstinger":    "Mid Credits Stinger",
 }
 
 // Smart pattern matchers for dynamic normalization
 var (
 	// Match decade patterns like "1940s", "1990s"
 	decadePattern = regexp.MustCompile(`^\d{4}s$`)
-	
+
 	// Match hyphenated compound words that should preserve hyphens
 	hyphenatedPattern = regexp.MustCompile(`^[\w]+-[\w]+`)
-	
+
 	// Match "X vs Y" patterns
 	versusPattern = regexp.MustCompile(`\b(\w+)\s+vs\s+(\w+)\b`)
-	
+
 	// Match "based on X" patterns
 	basedOnPattern = regexp.MustCompile(`^based on (.+)$`)
-	
+
 	// Match relationship patterns like "father daughter", "mother son"
 	relationshipPattern = regexp.MustCompile(`^(father|mother|parent|brother|sister|son|daughter)\s+(father|mother|parent|brother|sister|son|daughter)(?:\s+relationship)?$`)
-	
+
 	// Match city/state patterns like "san francisco, california"
 	cityStatePattern = regexp.MustCompile(`^([^,]+),\s*([^,]+)$`)
-	
+
 	// Match ethnicity/nationality + descriptive word patterns
 	ethnicityPattern = regexp.MustCompile(`^(african|asian|european|american|british|french|german|italian|spanish|chinese|japanese|korean|indian|mexican|latin|hispanic)\s+(american|lead|character|protagonist|antagonist|actor|actress)$`)
-	
+
 	// Match patterns with acronyms in parentheses like "central intelligence agency (cia)"
 	acronymInParensPattern = regexp.MustCompile(`^(.+)\s+\(([a-z.]+)\)$`)
-	
+
 	// Match potential organization/agency patterns like "dea agent", "fbi director"
 	agencyPattern = regexp.MustCompile(`^([a-z]{2,5})\s+(agent|director|officer|investigator|detective|operative|analyst|chief|deputy|special agent)$`)
-	
+
 	// Match century patterns like "5th century bc", "10th century"
 	centuryPattern = regexp.MustCompile(`^(\d+)(st|nd|rd|th)\s+century(\s+[a-z]+)?$`)
 )
@@ -154,25 +154,25 @@ func NormalizeKeyword(keyword string) string {
 	if keyword == "" {
 		return keyword
 	}
-	
+
 	// Convert to lowercase for pattern matching
 	lowerKeyword := strings.ToLower(keyword)
-	
+
 	// 1. Check critical replacements first (known abbreviations)
 	if replacement, exists := criticalReplacements[lowerKeyword]; exists {
 		return replacement
 	}
-	
+
 	// 2. Pattern-based normalization
 	if normalized := applyPatternNormalization(lowerKeyword); normalized != "" {
 		return normalized
 	}
-	
+
 	// 3. Check if it's a known acronym (return as-is if all caps)
 	if commonAcronyms[lowerKeyword] {
 		return strings.ToUpper(keyword)
 	}
-	
+
 	// 4. Apply intelligent title casing
 	return applyTitleCase(keyword)
 }
@@ -183,24 +183,24 @@ func applyPatternNormalization(keyword string) string {
 	if decadePattern.MatchString(keyword) {
 		return keyword // Keep as-is
 	}
-	
+
 	// City, State patterns (san francisco, california)
 	if matches := cityStatePattern.FindStringSubmatch(keyword); matches != nil {
 		city := applyTitleCase(matches[1])
 		state := applyTitleCase(matches[2])
 		return city + ", " + state
 	}
-	
+
 	// "X vs Y" patterns
 	if matches := versusPattern.FindStringSubmatch(keyword); matches != nil {
 		return applyTitleCase(matches[1]) + " vs " + applyTitleCase(matches[2])
 	}
-	
+
 	// "based on X" patterns
 	if matches := basedOnPattern.FindStringSubmatch(keyword); matches != nil {
 		return "Based on " + applyTitleCase(matches[1])
 	}
-	
+
 	// Relationship patterns (father daughter relationship)
 	if relationshipPattern.MatchString(keyword) {
 		parts := strings.Fields(keyword)
@@ -215,7 +215,7 @@ func applyPatternNormalization(keyword string) string {
 		}
 		return result
 	}
-	
+
 	// Ethnicity + descriptor patterns (african american lead)
 	if ethnicityPattern.MatchString(keyword) {
 		parts := strings.Fields(keyword)
@@ -225,14 +225,14 @@ func applyPatternNormalization(keyword string) string {
 		}
 		return strings.Join(normalized, " ")
 	}
-	
+
 	// Acronym in parentheses patterns (central intelligence agency (cia))
 	if matches := acronymInParensPattern.FindStringSubmatch(keyword); matches != nil {
 		mainPart := applyTitleCase(matches[1])
 		acronymPart := strings.ToUpper(matches[2])
 		return mainPart + " (" + acronymPart + ")"
 	}
-	
+
 	// Agency/organization patterns (dea agent, fbi director)
 	if matches := agencyPattern.FindStringSubmatch(keyword); matches != nil {
 		agency := matches[1]
@@ -244,7 +244,7 @@ func applyPatternNormalization(keyword string) string {
 		// Otherwise just title case both parts
 		return titleCase(agency) + " " + titleCase(role)
 	}
-	
+
 	// Century patterns (5th century bc, 10th century)
 	if matches := centuryPattern.FindStringSubmatch(keyword); matches != nil {
 		century := matches[1] + matches[2] + " Century"
@@ -259,7 +259,7 @@ func applyPatternNormalization(keyword string) string {
 		}
 		return century
 	}
-	
+
 	return "" // No pattern matched
 }
 
@@ -269,11 +269,11 @@ func applyTitleCase(phrase string) string {
 	if len(words) == 0 {
 		return phrase
 	}
-	
+
 	// Title case each word
 	for i, word := range words {
 		lowerWord := strings.ToLower(word)
-		
+
 		// Check if it's an acronym
 		if commonAcronyms[lowerWord] {
 			words[i] = strings.ToUpper(word)
@@ -285,21 +285,22 @@ func applyTitleCase(phrase string) string {
 			words[i] = strings.ToLower(word)
 		}
 	}
-	
+
 	return strings.Join(words, " ")
 }
 
 // titleCase converts a word to title case, preserving existing uppercase if mixed case
+// Also handles hyphenated compounds by capitalizing each part
 func titleCase(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	
+
 	// Check if word has mixed case (like "McDonald" or "iPhone")
 	hasMixedCase := false
 	hasLower := false
 	hasUpper := false
-	
+
 	for _, r := range s {
 		if unicode.IsLower(r) {
 			hasLower = true
@@ -308,14 +309,27 @@ func titleCase(s string) string {
 			hasUpper = true
 		}
 	}
-	
+
 	hasMixedCase = hasLower && hasUpper
-	
+
 	// If mixed case, preserve it
 	if hasMixedCase {
 		return s
 	}
-	
+
+	// Handle hyphenated words by capitalizing each part
+	if strings.Contains(s, "-") {
+		parts := strings.Split(s, "-")
+		for i, part := range parts {
+			if len(part) > 0 {
+				runes := []rune(strings.ToLower(part))
+				runes[0] = unicode.ToUpper(runes[0])
+				parts[i] = string(runes)
+			}
+		}
+		return strings.Join(parts, "-")
+	}
+
 	// Otherwise, title case it
 	runes := []rune(strings.ToLower(s))
 	runes[0] = unicode.ToUpper(runes[0])
@@ -326,10 +340,10 @@ func titleCase(s string) string {
 func NormalizeKeywords(keywords []string) []string {
 	normalized := make([]string, 0, len(keywords))
 	seen := make(map[string]bool)
-	
+
 	for _, keyword := range keywords {
 		norm := NormalizeKeyword(keyword)
-		
+
 		// Avoid duplicates after normalization
 		normLower := strings.ToLower(norm)
 		if !seen[normLower] {
@@ -337,7 +351,7 @@ func NormalizeKeywords(keywords []string) []string {
 			seen[normLower] = true
 		}
 	}
-	
+
 	return normalized
 }
 
@@ -349,27 +363,27 @@ func CleanDuplicateKeywords(currentKeywords, newNormalizedKeywords []string) []s
 	for _, keyword := range newNormalizedKeywords {
 		normalizedMap[strings.ToLower(keyword)] = keyword
 	}
-	
+
 	// Create reverse mapping - find what unnormalized versions should be replaced
 	toRemove := make(map[string]bool)
-	
+
 	// Check each current keyword to see if it should be replaced by a normalized version
 	for _, current := range currentKeywords {
 		// Try to normalize this current keyword
 		normalized := NormalizeKeyword(current)
 		normalizedLower := strings.ToLower(normalized)
-		
+
 		// If the normalized version exists in our new keywords and is different from current
 		if properForm, exists := normalizedMap[normalizedLower]; exists && current != properForm {
 			// Mark the old version for removal
 			toRemove[current] = true
 		}
 	}
-	
+
 	// Build the cleaned list
 	var cleaned []string
 	seen := make(map[string]bool)
-	
+
 	// First, add all current keywords that aren't being replaced
 	for _, keyword := range currentKeywords {
 		lowerKeyword := strings.ToLower(keyword)
@@ -378,7 +392,7 @@ func CleanDuplicateKeywords(currentKeywords, newNormalizedKeywords []string) []s
 			seen[lowerKeyword] = true
 		}
 	}
-	
+
 	// Then add all new normalized keywords
 	for _, keyword := range newNormalizedKeywords {
 		lowerKeyword := strings.ToLower(keyword)
@@ -387,6 +401,6 @@ func CleanDuplicateKeywords(currentKeywords, newNormalizedKeywords []string) []s
 			seen[lowerKeyword] = true
 		}
 	}
-	
+
 	return cleaned
 }
