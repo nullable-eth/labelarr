@@ -169,6 +169,26 @@ func (p *Processor) ProcessAllItems(libraryID string, libraryName string, mediaT
 		if p.storage != nil {
 			processed, storageExists := p.storage.Get(item.GetRatingKey())
 			if storageExists && processed.KeywordsSynced && processed.UpdateField == p.config.UpdateField && !p.config.ForceUpdate {
+				// Still try to export if export is enabled, even if already processed
+				if p.exporter != nil {
+					details, err := p.getItemDetails(item.GetRatingKey(), mediaType)
+					if err == nil {
+						// Extract current labels for export
+						currentLabels := p.extractCurrentValues(details)
+
+						// Extract file paths and sizes
+						fileInfos, err := p.extractFileInfos(details, mediaType)
+						if err == nil && len(fileInfos) > 0 {
+							// Accumulate the item for export
+							if err := p.exporter.ExportItemWithSizes(item.GetTitle(), currentLabels, fileInfos); err == nil {
+								if p.config.VerboseLogging {
+									fmt.Printf("   📤 Accumulated %d file paths for %s (already processed)\n", len(fileInfos), item.GetTitle())
+								}
+							}
+						}
+					}
+				}
+
 				skippedItems++
 				skippedAlreadyExist++
 				continue
