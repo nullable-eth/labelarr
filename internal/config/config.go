@@ -10,18 +10,17 @@ import (
 
 // Config holds all application configuration
 type Config struct {
-	Protocol            string
-	PlexServer          string
-	PlexPort            string
-	PlexToken           string
-	MovieLibraryID      string
-	MovieProcessAll     bool
-	TVLibraryID         string
-	TVProcessAll        bool
-	UpdateField         string
-	RemoveMode          string
-	TMDbReadAccessToken string
-	ProcessTimer        time.Duration
+	Protocol        string
+	PlexServer      string
+	PlexPort        string
+	PlexToken       string
+	MovieLibraryID  string
+	MovieProcessAll bool
+	TVLibraryID     string
+	TVProcessAll    bool
+	UpdateField     string
+	RemoveMode      string
+	ProcessTimer    time.Duration
 
 	// Radarr configuration
 	RadarrURL    string
@@ -51,17 +50,16 @@ type Config struct {
 // Load loads configuration from environment variables
 func Load() *Config {
 	config := &Config{
-		PlexServer:          os.Getenv("PLEX_SERVER"),
-		PlexPort:            os.Getenv("PLEX_PORT"),
-		PlexToken:           os.Getenv("PLEX_TOKEN"),
-		MovieLibraryID:      os.Getenv("MOVIE_LIBRARY_ID"),
-		MovieProcessAll:     getBoolEnvWithDefault("MOVIE_PROCESS_ALL", false),
-		TVLibraryID:         os.Getenv("TV_LIBRARY_ID"),
-		TVProcessAll:        getBoolEnvWithDefault("TV_PROCESS_ALL", false),
-		UpdateField:         getEnvWithDefault("UPDATE_FIELD", "label"),
-		RemoveMode:          os.Getenv("REMOVE"),
-		TMDbReadAccessToken: os.Getenv("TMDB_READ_ACCESS_TOKEN"),
-		ProcessTimer:        getProcessTimerFromEnv(),
+		PlexServer:      os.Getenv("PLEX_SERVER"),
+		PlexPort:        os.Getenv("PLEX_PORT"),
+		PlexToken:       os.Getenv("PLEX_TOKEN"),
+		MovieLibraryID:  os.Getenv("MOVIE_LIBRARY_ID"),
+		MovieProcessAll: getBoolEnvWithDefault("MOVIE_PROCESS_ALL", false),
+		TVLibraryID:     os.Getenv("TV_LIBRARY_ID"),
+		TVProcessAll:    getBoolEnvWithDefault("TV_PROCESS_ALL", false),
+		UpdateField:     getEnvWithDefault("UPDATE_FIELD", "label"),
+		RemoveMode:      os.Getenv("REMOVE"),
+		ProcessTimer:    getProcessTimerFromEnv(),
 
 		// Radarr configuration
 		RadarrURL:    os.Getenv("RADARR_URL"),
@@ -117,9 +115,6 @@ func (c *Config) IsRemoveMode() bool {
 func (c *Config) Validate() error {
 	if c.PlexToken == "" {
 		return fmt.Errorf("PLEX_TOKEN environment variable is required")
-	}
-	if c.TMDbReadAccessToken == "" {
-		return fmt.Errorf("TMDB_READ_ACCESS_TOKEN environment variable is required")
 	}
 	if c.PlexServer == "" {
 		return fmt.Errorf("PLEX_SERVER environment variable is required")

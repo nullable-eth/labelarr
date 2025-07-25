@@ -13,7 +13,6 @@ import (
 type ProcessedItem struct {
 	RatingKey      string    `json:"ratingKey"`
 	Title          string    `json:"title"`
-	TMDbID         string    `json:"tmdbId"`
 	LastProcessed  time.Time `json:"lastProcessed"`
 	KeywordsSynced bool      `json:"keywordsSynced"`
 	UpdateField    string    `json:"updateField"`
@@ -32,14 +31,14 @@ func NewStorage(dataDir string) (*Storage, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
-	
+
 	filePath := filepath.Join(dataDir, "processed_items.json")
-	
+
 	s := &Storage{
 		filePath: filePath,
 		data:     make(map[string]*ProcessedItem),
 	}
-	
+
 	// Load existing data
 	if err := s.load(); err != nil {
 		// If file doesn't exist, that's OK - we'll create it
@@ -47,7 +46,7 @@ func NewStorage(dataDir string) (*Storage, error) {
 			return nil, fmt.Errorf("failed to load existing data: %w", err)
 		}
 	}
-	
+
 	return s, nil
 }
 
@@ -57,7 +56,7 @@ func (s *Storage) load() error {
 	if err != nil {
 		return err
 	}
-	
+
 	return json.Unmarshal(data, &s.data)
 }
 
@@ -67,13 +66,13 @@ func (s *Storage) save() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Write to temp file first, then rename (atomic operation)
 	tempFile := s.filePath + ".tmp"
 	if err := os.WriteFile(tempFile, data, 0644); err != nil {
 		return err
 	}
-	
+
 	return os.Rename(tempFile, s.filePath)
 }
 
@@ -81,7 +80,7 @@ func (s *Storage) save() error {
 func (s *Storage) Get(ratingKey string) (*ProcessedItem, bool) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	
+
 	item, exists := s.data[ratingKey]
 	return item, exists
 }
@@ -90,9 +89,9 @@ func (s *Storage) Get(ratingKey string) (*ProcessedItem, bool) {
 func (s *Storage) Set(item *ProcessedItem) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	
+
 	s.data[item.RatingKey] = item
-	
+
 	return s.save()
 }
 
@@ -100,13 +99,13 @@ func (s *Storage) Set(item *ProcessedItem) error {
 func (s *Storage) GetAll() map[string]*ProcessedItem {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	
+
 	// Return a copy to avoid race conditions
 	result := make(map[string]*ProcessedItem)
 	for k, v := range s.data {
 		result[k] = v
 	}
-	
+
 	return result
 }
 
@@ -114,7 +113,7 @@ func (s *Storage) GetAll() map[string]*ProcessedItem {
 func (s *Storage) Count() int {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	
+
 	return len(s.data)
 }
 
@@ -122,14 +121,14 @@ func (s *Storage) Count() int {
 func (s *Storage) Cleanup(maxAge time.Duration) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	
+
 	cutoff := time.Now().Add(-maxAge)
-	
+
 	for key, item := range s.data {
 		if item.LastProcessed.Before(cutoff) {
 			delete(s.data, key)
 		}
 	}
-	
+
 	return s.save()
 }

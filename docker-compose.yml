@@ -10,8 +10,6 @@ services:
     environment:
       # Required - Get from Plex Web (F12 → Network → X-Plex-Token)
       - PLEX_TOKEN=your_plex_token_here
-      # Required - Get from https://www.themoviedb.org/settings/api
-      - TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
       # Required - Your Plex server details
       - PLEX_SERVER=localhost
       - PLEX_PORT=32400

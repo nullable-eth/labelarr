@@ -10,7 +10,6 @@ import (
 	"github.com/nullable-eth/labelarr/internal/plex"
 	"github.com/nullable-eth/labelarr/internal/radarr"
 	"github.com/nullable-eth/labelarr/internal/sonarr"
-	"github.com/nullable-eth/labelarr/internal/tmdb"
 )
 
 func main() {
@@ -25,14 +24,6 @@ func main() {
 
 	// Initialize clients
 	plexClient := plex.NewClient(cfg)
-	tmdbClient := tmdb.NewClient(cfg)
-
-	// Test TMDb connection
-	if err := tmdbClient.TestConnection(); err != nil {
-		fmt.Printf("❌ Failed to connect to TMDb: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println("✅ Successfully connected to TMDb")
 
 	// Initialize Radarr client if enabled
 	var radarrClient *radarr.Client
@@ -57,23 +48,23 @@ func main() {
 	}
 
 	// Initialize single processor
-	processor, err := media.NewProcessor(cfg, plexClient, tmdbClient, radarrClient, sonarrClient)
+	processor, err := media.NewProcessor(cfg, plexClient, radarrClient, sonarrClient)
 	if err != nil {
 		fmt.Printf("❌ Failed to initialize processor: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("🏷️ Starting Labelarr with TMDb Integration...")
+	fmt.Println("🏷️ Starting Labelarr withOUT TMDb Integration...")
 	fmt.Printf("📡 Server: %s://%s:%s\n", cfg.Protocol, cfg.PlexServer, cfg.PlexPort)
 
 	// Get and validate libraries
 	movieLibraries, tvLibraries := getLibraries(cfg, plexClient)
 
-	// Handle REMOVE mode - run once and exit
+	/* // Handle REMOVE mode - run once and exit
 	if cfg.IsRemoveMode() {
 		handleRemoveMode(cfg, processor, movieLibraries, tvLibraries)
 		os.Exit(0)
-	}
+	} */
 
 	// Handle normal processing mode
 	handleNormalMode(cfg, processor, movieLibraries, tvLibraries)
@@ -169,7 +160,7 @@ func displayLibrarySelection(cfg *config.Config, movieLibraries, tvLibraries []p
 	}
 }
 
-// handleRemoveMode processes keyword removal and exits
+/* // handleRemoveMode processes keyword removal and exits
 func handleRemoveMode(cfg *config.Config, processor *media.Processor, movieLibraries, tvLibraries []plex.Library) {
 	// Display selected libraries
 	displayLibrarySelection(cfg, movieLibraries, tvLibraries)
@@ -206,7 +197,7 @@ func handleRemoveMode(cfg *config.Config, processor *media.Processor, movieLibra
 		}
 	}
 	fmt.Println("\n✅ Keyword removal completed. Exiting.")
-}
+} */
 
 // handleNormalMode runs the periodic processing
 func handleNormalMode(cfg *config.Config, processor *media.Processor, movieLibraries, tvLibraries []plex.Library) {
@@ -215,6 +206,7 @@ func handleNormalMode(cfg *config.Config, processor *media.Processor, movieLibra
 
 	processFunc := func() {
 		// Process movie libraries
+		fmt.Printf("✅ Process movie libraries - start\n")
 		if len(movieLibraries) > 0 {
 			if cfg.MovieProcessAll {
 				for _, lib := range movieLibraries {
@@ -239,6 +231,7 @@ func handleNormalMode(cfg *config.Config, processor *media.Processor, movieLibra
 		}
 
 		// Process TV libraries
+		fmt.Printf("✅ Process TV libraries - start\n")
 		if cfg.ProcessTVShows() {
 			if cfg.TVProcessAll {
 				for _, lib := range tvLibraries {
@@ -263,6 +256,7 @@ func handleNormalMode(cfg *config.Config, processor *media.Processor, movieLibra
 		}
 
 		// Write all accumulated export files after processing all libraries
+		fmt.Printf("✅ Write all accumulated export files after processing all libraries - start\n")
 		if cfg.HasExportEnabled() {
 			fmt.Printf("\n📤 Writing export files to %s...\n", cfg.ExportLocation)
 			if exporter := processor.GetExporter(); exporter != nil {
@@ -311,6 +305,7 @@ func handleNormalMode(cfg *config.Config, processor *media.Processor, movieLibra
 
 	// Process immediately on start
 	processFunc()
+	fmt.Printf("✅ processFunc - end\n")
 
 	// Set up timer for periodic processing
 	ticker := time.NewTicker(cfg.ProcessTimer)
