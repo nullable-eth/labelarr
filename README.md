@@ -5,8 +5,15 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/nullable-eth/labelarr?style=flat-square)](https://golang.org/)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/nullable-eth/labelarr/release.yml?branch=main&style=flat-square)](https://github.com/nullable-eth/labelarr/actions)
 
-**Automatically sync TMDb keywords as Plex labels or genres for movies and TV shows**  
-Lightweight Docker container that bridges Plex with The Movie Database, adding searchable keywords to your media.
+# Plex Label Manager
+
+A lightweight Docker-based application to manage labels for movies and TV shows in your Plex media library, allowing searching, editing, and filtering by labels without external metadata dependencies.
+
+## Features
+- Search Plex library for movies and TV shows
+- View, add, edit, and remove labels for media items
+- Select from existing labels or create new ones
+- Filter and view media by applied labels
 
 ## 🚀 Quick Start
 
