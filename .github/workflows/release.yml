@@ -179,6 +179,62 @@ jobs:
           prerelease: false
           generate_release_notes: true
 
+  build-binaries:
+    needs: [check-changes, create-release]
+    if: needs.check-changes.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64.exe
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          go build -ldflags="-s -w" -o labelarr-${{ matrix.suffix }} ./cmd/labelarr
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.check-changes.outputs.version }}
+          files: labelarr-${{ matrix.suffix }}
+
+      - name: Generate Binary summary
+        run: |
+          echo "## 📦 Binary Built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** ${{ matrix.goos }}/${{ matrix.goarch }}" >> $GITHUB_STEP_SUMMARY
+          echo "**File:** labelarr-${{ matrix.suffix }}" >> $GITHUB_STEP_SUMMARY
+
   publish-docker:
     needs: [check-changes, create-release]
     if: needs.check-changes.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
