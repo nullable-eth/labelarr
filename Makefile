@@ -42,6 +42,9 @@ benchmark:
 clean:
 	$(GOCLEAN)
 	rm -f $(BINARY_NAME)
+	rm -f $(BINARY_NAME)-linux-amd64 $(BINARY_NAME)-linux-arm64
+	rm -f $(BINARY_NAME)-windows-amd64.exe
+	rm -f $(BINARY_NAME)-darwin-amd64 $(BINARY_NAME)-darwin-arm64
 	rm -f coverage.out coverage.html
 
 # Download dependencies
@@ -63,9 +66,11 @@ run: build
 # Build for multiple platforms
 .PHONY: build-all
 build-all:
-	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BINARY_NAME)-linux-amd64 $(BINARY_PATH)
-	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(BINARY_NAME)-windows-amd64.exe $(BINARY_PATH)
-	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BINARY_NAME)-darwin-amd64 $(BINARY_PATH)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -ldflags="-s -w" -o $(BINARY_NAME)-linux-amd64 $(BINARY_PATH)
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GOBUILD) -ldflags="-s -w" -o $(BINARY_NAME)-linux-arm64 $(BINARY_PATH)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GOBUILD) -ldflags="-s -w" -o $(BINARY_NAME)-windows-amd64.exe $(BINARY_PATH)
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GOBUILD) -ldflags="-s -w" -o $(BINARY_NAME)-darwin-amd64 $(BINARY_PATH)
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GOBUILD) -ldflags="-s -w" -o $(BINARY_NAME)-darwin-arm64 $(BINARY_PATH)
 
 # Help target
 .PHONY: help
@@ -80,5 +85,5 @@ help:
 	@echo "  deps            - Download and tidy dependencies"
 	@echo "  lint            - Run linter"
 	@echo "  run             - Build and run the application"
-	@echo "  build-all       - Build for multiple platforms"
+	@echo "  build-all       - Build for all platforms (linux, windows, darwin; amd64, arm64)"
 	@echo "  help            - Show this help message" 
