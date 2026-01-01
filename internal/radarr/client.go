@@ -8,13 +8,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nullable-eth/labelarr/internal/utils"
 )
 
 // Client represents a Radarr API client
 type Client struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+	baseURL      string
+	apiKey       string
+	httpClient   *http.Client
+	retryClient  *utils.RetryableHTTPClient
 }
 
 // NewClient creates a new Radarr API client
@@ -22,16 +25,35 @@ func NewClient(baseURL, apiKey string) *Client {
 	// Ensure baseURL doesn't have trailing slash
 	baseURL = strings.TrimRight(baseURL, "/")
 	
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	
 	return &Client{
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		baseURL:     baseURL,
+		apiKey:      apiKey,
+		httpClient:  httpClient,
+		retryClient: utils.NewRetryableHTTPClient(httpClient, nil),
 	}
 }
 
-// makeRequest performs an API request to Radarr
+// NewClientWithRetryConfig creates a new Radarr API client with custom retry configuration
+func NewClientWithRetryConfig(baseURL, apiKey string, retryConfig *utils.RetryConfig) *Client {
+	baseURL = strings.TrimRight(baseURL, "/")
+	
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	
+	return &Client{
+		baseURL:     baseURL,
+		apiKey:      apiKey,
+		httpClient:  httpClient,
+		retryClient: utils.NewRetryableHTTPClient(httpClient, retryConfig),
+	}
+}
+
+// makeRequest performs an API request to Radarr with exponential backoff retry
 func (c *Client) makeRequest(method, endpoint string, params url.Values) (*http.Response, error) {
 	fullURL := fmt.Sprintf("%s%s", c.baseURL, endpoint)
 	
@@ -48,7 +70,7 @@ func (c *Client) makeRequest(method, endpoint string, params url.Values) (*http.
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.retryClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
