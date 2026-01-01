@@ -13,7 +13,7 @@ Lightweight Docker container that bridges Plex with The Movie Database, adding s
 ### Docker Compose (Recommended)
 
 ```yaml
-version: '3.8'
+version: "3.8"
 
 services:
   labelarr:
@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./labelarr-data:/data
-      - ./exports:/data/exports  # Mount host directory for export files
+      - ./exports:/data/exports # Mount host directory for export files
     environment:
       # Required - Get from Plex Web (F12 → Network → X-Plex-Token)
       - PLEX_TOKEN=your_plex_token_here
@@ -37,7 +37,7 @@ services:
       - TV_PROCESS_ALL=true
       # Optional settings
       - PROCESS_TIMER=1h
-      - UPDATE_FIELD=label  # or 'genre'
+      - UPDATE_FIELD=label # or 'genre'
       # Optional Radarr/Sonarr integration
       # - USE_RADARR=true
       # - RADARR_URL=http://radarr:7878
@@ -48,6 +48,9 @@ services:
       # Optional export functionality
       # - EXPORT_LABELS=action,comedy,thriller,documentary,kids
       # - EXPORT_LOCATION=/data/exports
+      # Optional batch processing (recommended for large libraries)
+      # - BATCH_SIZE=100
+      # - BATCH_DELAY_SECONDS=10
 ```
 
 **Run:** `docker-compose up -d`
@@ -59,7 +62,7 @@ services:
 ✅ **Normalizes keywords** with proper capitalization and spelling  
 ✅ **Adds as Plex labels/genres** - never removes existing values  
 ✅ **Runs automatically** on configurable timer (default: 1 hour)  
-✅ **Multi-architecture** support (AMD64 + ARM64)  
+✅ **Multi-architecture** support (AMD64 + ARM64)
 
 ### 🎉 New Features in This Fork
 
@@ -100,7 +103,7 @@ docker run -d --name labelarr \
 To avoid Labelarr startup errors when Plex is not yet ready, use Docker Compose's depends_on with condition: service_healthy and add a healthcheck to your Plex service. This ensures Labelarr only starts after Plex is healthy.
 
 ```yaml
-version: '3.8'
+version: "3.8"
 services:
   plex:
     image: plexinc/pms-docker:latest
@@ -175,6 +178,13 @@ services:
 - `EXPORT_LOCATION=/path/to/export` - Directory where export files will be created
 - `EXPORT_MODE=txt` - Export format: `txt` (default) or `json`
 
+**Batch Processing (Optional):**
+
+- `BATCH_SIZE=100` - Number of items to process in each batch (default: `100`)
+- `BATCH_DELAY_SECONDS=10` - Delay in seconds between batches (default: `10`)
+
+**Note**: Batch processing is enabled by default with sensible values. Existing configurations will work without changes.
+
 </details>
 
 <details id="how-it-works">
@@ -212,6 +222,7 @@ Labelarr now supports automatic TMDb ID detection through Radarr and Sonarr APIs
 ### How It Works
 
 1. **For Movies (Radarr)**:
+
    - Matches by title and year
    - Falls back to IMDb ID from Plex
    - Checks file paths against Radarr's database
@@ -232,12 +243,12 @@ services:
     image: ghcr.io/nullable-eth/labelarr:latest
     environment:
       # ... other config ...
-      
+
       # Enable Radarr integration
       - USE_RADARR=true
       - RADARR_URL=http://radarr:7878
       - RADARR_API_KEY=your_radarr_api_key
-      
+
       # Enable Sonarr integration
       - USE_SONARR=true
       - SONARR_URL=http://sonarr:8989
@@ -295,7 +306,7 @@ The TMDb ID detection is very flexible and supports various formats:
 ### ❌ **Will NOT Match**
 
 - `mytmdb12345` (preceded by alphanumeric characters)
-- `tmdb12345abc` (followed by alphanumeric characters)  
+- `tmdb12345abc` (followed by alphanumeric characters)
 - `tmdb` (no digits following)
 
 ### 📁 **Example File Paths**
@@ -312,6 +323,194 @@ The TMDb ID detection is very flexible and supports various formats:
 /movies/ExtraSuffix tmdb-22222_extra/file.mkv
 /movies/Direct tmdb194884 format/file.mkv
 ```
+
+</details>
+
+<details id="batch-processing">
+<summary><h3 style="margin: 0; display: inline;">📦 Batch Processing</h3></summary>
+
+Labelarr processes media libraries in configurable batches to prevent overwhelming Radarr/Sonarr APIs and maintain system stability during large library scans.
+
+### 🎯 **What It Does**
+
+- **Chunked Processing**: Processes items in configurable batches instead of all at once
+- **API Rate Limiting**: Prevents flooding Radarr/Sonarr with thousands of simultaneous requests
+- **System Stability**: Allows SQLite databases to handle read/write operations without locking
+- **Memory Management**: Reduces memory usage and prevents container crashes
+- **Progress Tracking**: Shows batch progress for better monitoring
+
+### 🔧 **Configuration**
+
+```yaml
+environment:
+  # Batch processing settings
+  - BATCH_SIZE=100 # Items per batch (default: 100)
+  - BATCH_DELAY_SECONDS=10 # Delay between batches (default: 10)
+  # ... other labelarr config ...
+```
+
+**Complete Docker Compose Example with Batch Processing:**
+
+```yaml
+services:
+  labelarr:
+    image: ghcr.io/nullable-eth/labelarr:latest
+    container_name: labelarr
+    restart: unless-stopped
+    volumes:
+      - ./labelarr-data:/data
+    environment:
+      - PLEX_TOKEN=your_plex_token_here
+      - TMDB_READ_ACCESS_TOKEN=your_tmdb_token
+      - PLEX_SERVER=plex
+      - PLEX_PORT=32400
+      - MOVIE_PROCESS_ALL=true
+      - TV_PROCESS_ALL=true
+      # Batch processing for large libraries
+      - BATCH_SIZE=50 # Smaller batches for stability
+      - BATCH_DELAY_SECONDS=15 # Longer delay for slower systems
+      # Radarr/Sonarr integration
+      - USE_RADARR=true
+      - RADARR_URL=http://radarr:7878
+      - RADARR_API_KEY=your_radarr_api_key
+```
+
+### 📊 **How It Works**
+
+#### **Processing Flow**
+
+1. **Library Scan**: Fetches all items from Plex library
+2. **Batch Division**: Divides items into chunks of `BATCH_SIZE`
+3. **Batch Processing**: Processes each batch sequentially
+4. **Batch Delay**: Waits `BATCH_DELAY_SECONDS` between batches
+5. **Progress Reporting**: Shows batch and overall progress
+
+#### **Example Output**
+
+```
+✅ Found 4247 movies in library
+🔄 Processing in batches of 100 items with 10s delay between batches
+
+📦 Processing batch 1/43 (100 items)...
+📊 Progress: 2% (100/4247 movies processed)
+
+📦 Processing batch 2/43 (100 items)...
+⏳ Waiting 10s before processing next batch...
+📊 Progress: 5% (200/4247 movies processed)
+
+📦 Processing batch 3/43 (100 items)...
+⏳ Waiting 10s before processing next batch...
+```
+
+### ⚙️ **Configuration Guidelines**
+
+#### **For Small Libraries (< 1,000 items)**
+
+```yaml
+- BATCH_SIZE=200 # Larger batches for efficiency
+- BATCH_DELAY_SECONDS=5 # Shorter delay
+```
+
+#### **For Medium Libraries (1,000 - 5,000 items)**
+
+```yaml
+- BATCH_SIZE=100 # Default settings work well
+- BATCH_DELAY_SECONDS=10 # Default delay
+```
+
+#### **For Large Libraries (> 5,000 items)**
+
+```yaml
+- BATCH_SIZE=50 # Smaller batches for stability
+- BATCH_DELAY_SECONDS=15 # Longer delay for system recovery
+```
+
+#### **For Very Large Libraries (> 10,000 items)**
+
+```yaml
+- BATCH_SIZE=25 # Very small batches
+- BATCH_DELAY_SECONDS=20 # Extended delay
+```
+
+### 🚀 **Performance Benefits**
+
+**Without Batch Processing:**
+
+- 4,000 items processed continuously
+- Radarr/Sonarr APIs overwhelmed with requests
+- SQLite database locks under pressure
+- Potential container crashes from resource exhaustion
+
+**With Batch Processing:**
+
+- 4,000 items processed in 40 batches of 100
+- 10-second recovery time between batches
+- APIs can handle requests without overwhelming
+- Stable processing with predictable resource usage
+
+### 🔍 **Monitoring & Troubleshooting**
+
+#### **Signs You Need Smaller Batches**
+
+- Radarr/Sonarr becomes unresponsive during processing
+- Container crashes or restarts during large library scans
+- Database lock errors in Radarr/Sonarr logs
+- High memory usage or file descriptor exhaustion
+
+#### **Signs You Can Use Larger Batches**
+
+- Processing completes without issues
+- Radarr/Sonarr remains responsive throughout
+- No database errors or container crashes
+- System resources remain stable
+
+#### **Optimal Settings**
+
+Start with defaults and adjust based on your system:
+
+1. **Monitor system performance** during initial runs
+2. **Check Radarr/Sonarr logs** for database errors
+3. **Adjust batch size down** if you see instability
+4. **Adjust delay up** if APIs become unresponsive
+5. **Test with different values** to find optimal settings
+
+### 💡 **Tips**
+
+- **Start Conservative**: Begin with smaller batches and shorter delays
+- **Monitor Resources**: Watch CPU, memory, and database performance
+- **System-Specific**: Optimal settings vary by hardware and library size
+- **Network Considerations**: Slower networks may benefit from longer delays
+- **Database Type**: SQLite databases are more sensitive than PostgreSQL/MySQL
+- **Concurrent Processing**: Avoid running multiple Labelarr instances simultaneously
+
+### ⚠️ **Important Notes**
+
+**Backward Compatibility:**
+
+- Batch processing is enabled by default with sensible values (100 items, 10s delay)
+- Existing Docker Compose files and configurations work without changes
+- No migration required - batch processing activates automatically
+- Verbose batch messages only appear for large libraries (>1000 items) or custom settings
+
+**Batch Processing Behavior:**
+
+- Batches are processed sequentially, not in parallel
+- Progress is reported both per-batch and overall
+- The last batch may contain fewer items than `BATCH_SIZE`
+- No delay is added after the final batch
+
+**Resource Management:**
+
+- Batch processing reduces peak memory usage
+- API rate limiting prevents overwhelming external services
+- Database pressure is distributed over time
+- Container stability is improved for large libraries
+
+**Processing Time:**
+
+- Total processing time increases due to delays between batches
+- Trade-off between speed and system stability
+- Large libraries benefit significantly from improved reliability
 
 </details>
 
@@ -353,7 +552,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./labelarr-data:/data
-      - ./exports:/data/exports  # Mount host directory for export files
+      - ./exports:/data/exports # Mount host directory for export files
     environment:
       - PLEX_TOKEN=your_plex_token_here
       - TMDB_READ_ACCESS_TOKEN=your_tmdb_token
@@ -738,7 +937,7 @@ Labelarr **always locks** the field after adding TMDb keywords to prevent Plex f
 
 You have movies with:
 
-- 🏷️ TMDb keywords: `action`, `thriller`, `heist`  
+- 🏷️ TMDb keywords: `action`, `thriller`, `heist`
 - 🏷️ Custom labels: `watched`, `favorites`, `4k-remaster`
 
 **Using `REMOVE=lock`:**
@@ -750,7 +949,7 @@ You have movies with:
 
 **Using `REMOVE=unlock`:**
 
-- ✅ Removes only: `action`, `thriller`, `heist`  
+- ✅ Removes only: `action`, `thriller`, `heist`
 - ✅ Keeps: `watched`, `favorites`, `4k-remaster`
 - 🔓 Field becomes **unlocked** - Plex can add new metadata
 - 💡 **Best for**: Users who want Plex to manage metadata going forward
@@ -794,7 +993,7 @@ In Plex Web UI, you'll see:
 
 ![Example of locked genre field in Plex](example/genre.png)
 
-*The lock icon indicates this genre field is protected from automatic changes*
+_The lock icon indicates this genre field is protected from automatic changes_
 
 </details>
 
@@ -1002,6 +1201,28 @@ When `FORCE_UPDATE=true`:
 - Check PLEX_SERVER and PLEX_PORT values
 - Try setting PLEX_REQUIRES_HTTPS=false for local servers
 
+**Large library processing issues**
+
+- Radarr/Sonarr becomes unresponsive during processing
+- Container crashes or high memory usage
+- Database lock errors in logs
+
+**Solution**: Enable batch processing with smaller batches:
+
+```yaml
+environment:
+  - BATCH_SIZE=50 # Reduce from default 100
+  - BATCH_DELAY_SECONDS=15 # Increase from default 10
+```
+
+For very large libraries (10,000+ items):
+
+```yaml
+environment:
+  - BATCH_SIZE=25 # Very small batches
+  - BATCH_DELAY_SECONDS=20 # Extended delay
+```
+
 ### 🎬 Radarr Users: Ensuring TMDb ID in File Paths
 
 If you're using Radarr to manage your movie collection, follow these steps to ensure Labelarr can detect TMDb IDs from your file paths:
@@ -1018,7 +1239,7 @@ Radarr can automatically include TMDb IDs in your movie file and folder names. U
    {Movie CleanTitle} ({Release Year}) {tmdb-{TmdbId}}
    ```
 
-   *Example*: `The Matrix (1999) {tmdb-603}`
+   _Example_: `The Matrix (1999) {tmdb-603}`
 
 2. **Movie File Format**:
 
@@ -1026,7 +1247,7 @@ Radarr can automatically include TMDb IDs in your movie file and folder names. U
    {Movie CleanTitle} ({Release Year}) {tmdb-{TmdbId}} - {[Quality Full]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoCodec]}{-Release Group}
    ```
 
-   *Example*: `The Matrix (1999) {tmdb-603} - [Bluray-1080p][x264][DTS 5.1]-GROUP`
+   _Example_: `The Matrix (1999) {tmdb-603} - [Bluray-1080p][x264][DTS 5.1]-GROUP`
 
 #### **Alternative Radarr Naming Options**
 
@@ -1100,6 +1321,7 @@ To actually rename existing folders:
 4. **At the bottom, click "Edit"**
 
 5. **In the popup:**
+
    - Set the **Root Folder** to the same one it's already using (e.g., `/mnt/user/TV`)
    - Click **"Save"**
 
