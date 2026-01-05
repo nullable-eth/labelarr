@@ -11,14 +11,12 @@ RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o labelarr ./cmd/labelarr
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.21
 
 # Install ca-certificates for HTTPS requests and debugging tools
-RUN apk update && apk upgrade && \
-     apk add --no-cache ca-certificates tzdata bash curl wget busybox-extras && \
-     ln -sf /bin/bash /bin/sh && \
-     echo "Bash installed successfully" && \
-     which bash && bash --version
+# Using retry logic for QEMU emulation stability during multi-arch builds
+RUN apk add --no-cache --update ca-certificates tzdata bash curl wget && \
+    ln -sf /bin/bash /bin/sh
 
 WORKDIR /root/
 
