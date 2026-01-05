@@ -46,6 +46,10 @@ type Config struct {
 	ExportLabels   []string
 	ExportLocation string
 	ExportMode     string
+
+	// Batch processing configuration
+	BatchSize         int
+	BatchDelaySeconds int
 }
 
 // Load loads configuration from environment variables
@@ -86,6 +90,10 @@ func Load() *Config {
 		ExportLabels:   parseExportLabels(os.Getenv("EXPORT_LABELS")),
 		ExportLocation: os.Getenv("EXPORT_LOCATION"),
 		ExportMode:     getEnvWithDefault("EXPORT_MODE", "txt"),
+
+		// Batch processing configuration
+		BatchSize:         getIntEnvWithDefault("BATCH_SIZE", 100),
+		BatchDelaySeconds: getIntEnvWithDefault("BATCH_DELAY_SECONDS", 10),
 	}
 
 	// Set protocol based on HTTPS requirement
@@ -157,6 +165,14 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate batch processing configuration
+	if c.BatchSize <= 0 {
+		return fmt.Errorf("BATCH_SIZE must be greater than 0")
+	}
+	if c.BatchDelaySeconds < 0 {
+		return fmt.Errorf("BATCH_DELAY_SECONDS must be 0 or greater")
+	}
+
 	return nil
 }
 
@@ -183,6 +199,22 @@ func getBoolEnvWithDefault(envVar string, defaultValue bool) bool {
 	}
 	result, err := strconv.ParseBool(value)
 	if err != nil {
+		return defaultValue
+	}
+	return result
+}
+
+func getIntEnvWithDefault(envVar string, defaultValue int) int {
+	value := os.Getenv(envVar)
+	if value == "" {
+		return defaultValue
+	}
+	result, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	// Ensure positive values for batch processing
+	if result <= 0 {
 		return defaultValue
 	}
 	return result

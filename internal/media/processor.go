@@ -153,17 +153,42 @@ func (p *Processor) ProcessAllItems(libraryID string, libraryName string, mediaT
 	processedCount := 0
 	lastProgressReport := 0
 
-	for _, item := range items {
-		processedCount++
+	// Batch processing configuration
+	batchSize := p.config.BatchSize
+	batchDelay := time.Duration(p.config.BatchDelaySeconds) * time.Second
+	
+	// Only show batch processing message if non-default values or large library
+	if batchSize != 100 || batchDelay != 10*time.Second || totalCount > 1000 {
+		fmt.Printf("🔄 Processing in batches of %d items with %v delay between batches\n", batchSize, batchDelay)
+	}
 
-		// Show progress for large libraries
-		if totalCount > 100 {
-			progress := (processedCount * 100) / totalCount
-			if progress >= lastProgressReport+10 {
-				fmt.Printf("📊 Progress: %d%% (%d/%d %s processed)\n", progress, processedCount, totalCount, displayName)
-				lastProgressReport = progress
-			}
+	// Process items in batches
+	for batchStart := 0; batchStart < len(items); batchStart += batchSize {
+		batchEnd := batchStart + batchSize
+		if batchEnd > len(items) {
+			batchEnd = len(items)
 		}
+		
+		batch := items[batchStart:batchEnd]
+		batchNum := (batchStart / batchSize) + 1
+		totalBatches := (len(items) + batchSize - 1) / batchSize
+		
+		// Only show batch progress for large libraries or non-default batch sizes
+		if totalCount > 1000 || batchSize != 100 || batchDelay != 10*time.Second {
+			fmt.Printf("📦 Processing batch %d/%d (%d items)...\n", batchNum, totalBatches, len(batch))
+		}
+
+		for _, item := range batch {
+			processedCount++
+
+			// Show progress for large libraries
+			if totalCount > 100 {
+				progress := (processedCount * 100) / totalCount
+				if progress >= lastProgressReport+10 {
+					fmt.Printf("📊 Progress: %d%% (%d/%d %s processed)\n", progress, processedCount, totalCount, displayName)
+					lastProgressReport = progress
+				}
+			}
 		// Check if already processed (only if storage is enabled)
 		var exists bool
 		if p.storage != nil {
@@ -401,6 +426,16 @@ func (p *Processor) ProcessAllItems(libraryID string, libraryName string, mediaT
 		}
 
 		time.Sleep(500 * time.Millisecond)
+		}
+
+		// Add delay between batches (except for the last batch)
+		if batchEnd < len(items) && batchDelay > 0 {
+			// Only show delay message for large libraries or non-default configurations
+			if totalCount > 1000 || batchSize != 100 || batchDelay != 10*time.Second {
+				fmt.Printf("⏳ Waiting %v before processing next batch...\n", batchDelay)
+			}
+			time.Sleep(batchDelay)
+		}
 	}
 
 	// Show verbose summary if items were skipped
