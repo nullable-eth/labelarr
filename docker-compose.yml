@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   labelarr:
-    image: ghcr.io/nullable-eth/labelarr:latest
+    image: ttlequals0/labelarr:latest
     container_name: labelarr
     restart: unless-stopped
     volumes:
