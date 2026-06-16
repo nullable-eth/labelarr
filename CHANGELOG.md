@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `EXCLUDE_LABELS` environment variable (default empty): comma-separated list of Plex labels that mark items as opted-out of labelarr. Items carrying any of these labels are skipped during both apply and removal passes. Case-insensitive; surrounding whitespace and empty values in the CSV are ignored. Logged at startup when active (`[INFO] EXCLUDE_LABELS active - items tagged with any of [...] will be skipped`) and per skipped item under `VERBOSE_LOGGING=true`.
+
+### Documentation
+- README `Library Selection` section now documents `MOVIE_LIBRARY_EXCLUDE` and `TV_LIBRARY_EXCLUDE`, which were added in 1.3.0 but only appeared in the changelog.
+
 ## [1.3.2] - 2026-04-21
 
 ### Security

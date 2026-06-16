@@ -3,6 +3,7 @@ package media
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +59,10 @@ type Processor struct {
 	cacheMu      sync.RWMutex
 	processingMu sync.Mutex
 	processing   map[string]bool
+
+	// excludeLabels is the lowercased set of Plex labels that mark items as opted-out.
+	// Built once from config.ExcludeLabels in NewProcessor.
+	excludeLabels map[string]struct{}
 }
 
 // NewProcessor creates a new generic media processor
@@ -76,15 +81,25 @@ func NewProcessor(cfg *config.Config, clients Clients) (*Processor, error) {
 		}
 	}
 
+	excludeLabels := make(map[string]struct{}, len(cfg.ExcludeLabels))
+	for _, l := range cfg.ExcludeLabels {
+		t := strings.TrimSpace(strings.ToLower(l))
+		if t == "" {
+			continue
+		}
+		excludeLabels[t] = struct{}{}
+	}
+
 	processor := &Processor{
-		config:       cfg,
-		plexClient:   plexClient,
-		tmdbClient:   tmdbClient,
-		radarrClient: radarrClient,
-		sonarrClient: sonarrClient,
-		storage:      stor,
-		keywordCache: make(map[string][]string),
-		processing:   make(map[string]bool),
+		config:        cfg,
+		plexClient:    plexClient,
+		tmdbClient:    tmdbClient,
+		radarrClient:  radarrClient,
+		sonarrClient:  sonarrClient,
+		storage:       stor,
+		keywordCache:  make(map[string][]string),
+		processing:    make(map[string]bool),
+		excludeLabels: excludeLabels,
 	}
 
 	// Initialize exporter if export is enabled
@@ -108,7 +123,31 @@ func NewProcessor(cfg *config.Config, clients Clients) (*Processor, error) {
 		fmt.Printf("[SYNC] Running in ephemeral mode - no persistent storage (set DATA_DIR to enable)\n")
 	}
 
+	if len(excludeLabels) > 0 {
+		labels := make([]string, 0, len(excludeLabels))
+		for l := range excludeLabels {
+			labels = append(labels, l)
+		}
+		sort.Strings(labels)
+		fmt.Printf("[INFO] EXCLUDE_LABELS active - items tagged with any of %v will be skipped (case-insensitive)\n", labels)
+	}
+
 	return processor, nil
+}
+
+// isExcludedByLabel reports whether the item carries any Plex label listed in
+// EXCLUDE_LABELS. Match is case-insensitive. When excluded, returns the actual
+// label tag from Plex (preserving the original casing) for logging.
+func (p *Processor) isExcludedByLabel(item MediaItem) (string, bool) {
+	if len(p.excludeLabels) == 0 {
+		return "", false
+	}
+	for _, lbl := range item.GetLabel() {
+		if _, ok := p.excludeLabels[strings.ToLower(lbl.Tag)]; ok {
+			return lbl.Tag, true
+		}
+	}
+	return "", false
 }
 
 // GetExporter returns the exporter instance if export is enabled
@@ -241,6 +280,11 @@ func (p *Processor) ProcessSingleItem(ratingKey, libraryID string, mediaType Med
 	}
 
 	fmt.Printf("[WEBHOOK] Processing single item: %s (%d)\n", item.GetTitle(), item.GetYear())
+
+	if tag, skip := p.isExcludedByLabel(item); skip {
+		fmt.Printf("[SKIP] %s (%d) excluded by label %q (EXCLUDE_LABELS)\n", item.GetTitle(), item.GetYear(), tag)
+		return nil
+	}
 
 	tmdbID := p.extractTMDbID(item, mediaType)
 	if tmdbID == "" {
@@ -393,6 +437,14 @@ func (p *Processor) ProcessAllItems(libraryID string, libraryName string, mediaT
 
 		for _, item := range b.items {
 			processedCount++
+
+			if tag, skipExcl := p.isExcludedByLabel(item); skipExcl {
+				if p.config.VerboseLogging {
+					fmt.Printf("   [SKIP] %s (%d) excluded by label %q (EXCLUDE_LABELS)\n", item.GetTitle(), item.GetYear(), tag)
+				}
+				skippedItems++
+				continue
+			}
 
 			if totalCount > 100 {
 				progress := (processedCount * 100) / totalCount
@@ -692,6 +744,14 @@ func (p *Processor) RemoveKeywordsFromItems(libraryID string, mediaType MediaTyp
 
 			if len(items) > 100 && processedCount%50 == 0 {
 				fmt.Printf("[STATS] Removal Progress: %d/%d (%.1f%%)\n", processedCount, len(items), float64(processedCount)/float64(len(items))*100)
+			}
+
+			if tag, skipExcl := p.isExcludedByLabel(item); skipExcl {
+				if p.config.VerboseLogging {
+					fmt.Printf("   [SKIP] %s (%d) excluded by label %q (EXCLUDE_LABELS)\n", item.GetTitle(), item.GetYear(), tag)
+				}
+				skippedCount++
+				continue
 			}
 
 			tmdbID := p.extractTMDbID(item, mediaType)

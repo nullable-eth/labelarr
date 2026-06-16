@@ -92,6 +92,14 @@ Pick one approach per media type:
 | `TV_PROCESS_ALL=true` | Process all TV show libraries |
 | `TV_LIBRARY_ID=2` | Process a specific TV library by ID |
 
+Optionally narrow what gets processed within those libraries:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MOVIE_LIBRARY_EXCLUDE` | (empty) | Comma-separated Plex library **IDs** to skip when `MOVIE_PROCESS_ALL=true` (e.g. `MOVIE_LIBRARY_EXCLUDE=8,12`). Useful for keeping a "Home Videos" library out of the scan. |
+| `TV_LIBRARY_EXCLUDE` | (empty) | Same as above for TV libraries. |
+| `EXCLUDE_LABELS` | (empty) | Comma-separated **per-item opt-out** label list. Any Plex item carrying one of these labels is skipped on both apply and removal paths. Case-insensitive. Example: `EXCLUDE_LABELS=labelarr:skip,home video`. Tag the offending items in Plex (Edit -> Tags -> Labels) and labelarr will leave them alone. |
+
 ### Optional
 
 | Variable | Default | Description |
