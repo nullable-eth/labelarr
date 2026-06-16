@@ -189,9 +189,6 @@ func (p *Processor) applyKeywordPrefix(keywords []string) []string {
 	return prefixed
 }
 
-// ProcessAllItems processes all items in the specified library
-// ProcessSingleItem processes a single item by rating key. Used by webhooks to
-// tag only the newly added item instead of scanning the entire library.
 // ProcessSingleItem processes a single item by rating key. Used by webhooks to
 // tag only the newly added item instead of scanning the entire library.
 func (p *Processor) ProcessSingleItem(ratingKey, libraryID string, mediaType MediaType) error {
@@ -694,7 +691,7 @@ func (p *Processor) RemoveKeywordsFromItems(libraryID string, mediaType MediaTyp
 			processedCount++
 
 			if len(items) > 100 && processedCount%50 == 0 {
-				fmt.Printf("Removal Progress: %d/%d (%.1f%%)\n", processedCount, len(items), float64(processedCount)/float64(len(items))*100)
+				fmt.Printf("[STATS] Removal Progress: %d/%d (%.1f%%)\n", processedCount, len(items), float64(processedCount)/float64(len(items))*100)
 			}
 
 			tmdbID := p.extractTMDbID(item, mediaType)
@@ -767,7 +764,15 @@ func (p *Processor) RemoveKeywordsFromItems(libraryID string, mediaType MediaTyp
 
 	fmt.Printf("\n[STATS] Removal Summary:\n")
 	fmt.Printf("  [TOTAL] Total %s checked: %d\n", displayName, len(items))
-	displayTitle := strings.ToUpper(displayName[:1]) + displayName[1:]
+	var displayTitle string
+	switch mediaType {
+	case MediaTypeMovie:
+		displayTitle = "Movies"
+	case MediaTypeTV:
+		displayTitle = "TV Shows"
+	default:
+		displayTitle = strings.ToUpper(displayName[:1]) + displayName[1:]
+	}
 	fmt.Printf("  [REMOVE] %s with keywords removed: %d\n", displayTitle, removedCount)
 	fmt.Printf("  [SKIP] Skipped %s: %d\n", displayName, skippedCount)
 	fmt.Printf("  [LABEL] Total keywords removed: %d\n", totalKeywordsRemoved)

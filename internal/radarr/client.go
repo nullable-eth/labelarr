@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -47,15 +48,14 @@ func NewClientWithRetryConfig(baseURL, apiKey string, retryConfig *utils.RetryCo
 	}
 }
 
-func (c *Client) makeRequest(method, endpoint string, params map[string]string) (*http.Response, error) {
+// makeRequest performs an API request to Radarr with exponential backoff retry.
+// Query parameters are URL-encoded via url.Values.Encode() so values containing
+// spaces, "+", "&", etc. are escaped correctly.
+func (c *Client) makeRequest(method, endpoint string, params url.Values) (*http.Response, error) {
 	fullURL := fmt.Sprintf("%s%s", c.baseURL, endpoint)
 
 	if len(params) > 0 {
-		parts := make([]string, 0, len(params))
-		for k, v := range params {
-			parts = append(parts, k+"="+v)
-		}
-		fullURL += "?" + strings.Join(parts, "&")
+		fullURL = fmt.Sprintf("%s?%s", fullURL, params.Encode())
 	}
 
 	req, err := http.NewRequest(method, fullURL, nil)

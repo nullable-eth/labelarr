@@ -44,7 +44,8 @@ services:
       # - ITEM_DELAY=500ms
 
       # Keyword prefix (optional, useful with UPDATE_FIELD=genre)
-      # - KEYWORD_PREFIX=-
+      # Use quotes to preserve the trailing space (matches the README example).
+      # - KEYWORD_PREFIX="- "
 
       # Webhook support (optional, for real-time processing)
       # - WEBHOOK_ENABLED=true

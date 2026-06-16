@@ -125,7 +125,7 @@ func (s *Server) Start() error {
 
 	go func() {
 		if err := s.httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("Webhook server error: %v\n", err)
+			fmt.Printf("[WEBHOOK] server error: %v\n", err)
 		}
 	}()
 
@@ -182,7 +182,7 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.config.VerboseLogging {
-		fmt.Printf("Webhook received: event=%s library=%s section_type=%s media_type=%s title=%s\n",
+		fmt.Printf("[WEBHOOK] received: event=%s library=%s section_type=%s media_type=%s title=%s\n",
 			payload.Event,
 			payload.Metadata.LibrarySectionTitle,
 			payload.Metadata.LibrarySectionType,
@@ -207,7 +207,7 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	if mediaType != media.MediaTypeUnknown {
 		s.addPendingItem(libraryID, libraryName, mediaType, payload.Metadata.RatingKey)
 	} else if s.config.VerboseLogging {
-		fmt.Printf("Webhook: ignoring event for unknown library %s (ID: %s)\n", libraryName, libraryID)
+		fmt.Printf("[WEBHOOK] ignoring event for unknown library %s (ID: %s)\n", libraryName, libraryID)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -317,7 +317,7 @@ func (s *Server) addPendingItem(libraryID, libraryName string, mediaType media.M
 			pw.ratingKeys[ratingKey] = struct{}{}
 		}
 		if s.config.VerboseLogging {
-			fmt.Printf("Webhook: reset debounce for library %s (%d items queued)\n", libraryName, len(pw.ratingKeys))
+			fmt.Printf("[WEBHOOK] reset debounce for library %s (%d items queued)\n", libraryName, len(pw.ratingKeys))
 		}
 	} else {
 		keys := make(map[string]struct{})
@@ -330,7 +330,7 @@ func (s *Server) addPendingItem(libraryID, libraryName string, mediaType media.M
 			ratingKeys:  keys,
 		}
 		s.pending[libraryID] = pw
-		fmt.Printf("Webhook: scheduled processing for library %s in %v\n", libraryName, debounce)
+		fmt.Printf("[WEBHOOK] scheduled processing for library %s in %v\n", libraryName, debounce)
 	}
 
 	gen := pw.gen
@@ -354,20 +354,20 @@ func (s *Server) addPendingItem(libraryID, libraryName string, mediaType media.M
 
 func (s *Server) processItems(libraryID, libraryName string, mediaType media.MediaType, ratingKeys []string) {
 	if len(ratingKeys) == 0 {
-		fmt.Printf("Webhook: processing full library %s (no rating keys in events)\n", libraryName)
+		fmt.Printf("[WEBHOOK] processing full library %s (no rating keys in events)\n", libraryName)
 		if err := s.processor.ProcessAllItems(libraryID, libraryName, mediaType); err != nil {
-			fmt.Printf("Webhook: error processing library %s: %v\n", libraryName, err)
+			fmt.Printf("[WEBHOOK] error processing library %s: %v\n", libraryName, err)
 		} else {
-			fmt.Printf("Webhook: finished processing library %s\n", libraryName)
+			fmt.Printf("[WEBHOOK] finished processing library %s\n", libraryName)
 		}
 		return
 	}
 
-	fmt.Printf("Webhook: processing %d items in library %s\n", len(ratingKeys), libraryName)
+	fmt.Printf("[WEBHOOK] processing %d items in library %s\n", len(ratingKeys), libraryName)
 	for _, key := range ratingKeys {
 		if err := s.processor.ProcessSingleItem(key, libraryID, mediaType); err != nil {
-			fmt.Printf("Webhook: error processing item %s: %v\n", key, err)
+			fmt.Printf("[WEBHOOK] error processing item %s: %v\n", key, err)
 		}
 	}
-	fmt.Printf("Webhook: finished processing %d items in library %s\n", len(ratingKeys), libraryName)
+	fmt.Printf("[WEBHOOK] finished processing %d items in library %s\n", len(ratingKeys), libraryName)
 }
