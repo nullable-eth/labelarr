@@ -109,9 +109,23 @@ func (r *RetryableHTTPClient) DoWithContext(ctx context.Context, req *http.Reque
 			}
 		}
 		
-		// Clone the request for retry (body needs special handling if present)
+		// Clone the request for retry. Clone copies the Body reference but
+		// not the underlying stream — once consumed on attempt 1, subsequent
+		// attempts would send an empty body. Restore it from GetBody, which
+		// http.NewRequest{,WithContext} populates automatically for
+		// bytes.Reader, bytes.Buffer, and strings.Reader bodies.
 		reqClone := req.Clone(ctx)
-		
+		if req.Body != nil && req.Body != http.NoBody {
+			if req.GetBody == nil {
+				return nil, fmt.Errorf("retry: request body is not replayable (req.GetBody is nil)")
+			}
+			body, getBodyErr := req.GetBody()
+			if getBodyErr != nil {
+				return nil, fmt.Errorf("retry: failed to get request body for attempt %d: %w", attempt, getBodyErr)
+			}
+			reqClone.Body = body
+		}
+
 		resp, err := r.client.Do(reqClone)
 		if err != nil {
 			lastErr = err
