@@ -76,7 +76,7 @@
 
 #### Plex Webhook Support
 - Webhook listener for real-time processing (WEBHOOK_ENABLED, WEBHOOK_PORT)
-- Handles library.new and library.on.deck events
+- Handles library.new events (other Plex events are accepted but ignored to avoid reprocessing items that don't need it)
 - Configurable debounce window (WEBHOOK_DEBOUNCE, default 30s)
 - Prevents concurrent processing of the same library
 - Health check endpoint at /health

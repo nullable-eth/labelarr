@@ -173,7 +173,7 @@ ports:
   - "9090:9090"
 ```
 
-Configure Plex to send webhooks to `http://labelarr:9090/webhook` (Settings > Webhooks in Plex). Labelarr listens for `library.new` and `library.on.deck` events.
+Configure Plex to send webhooks to `http://labelarr:9090/webhook` (Settings > Webhooks in Plex). Labelarr listens for `library.new` events. Other Plex webhook events (`library.on.deck`, `media.play`, etc.) are accepted but intentionally ignored, since they fire repeatedly for items that don't need to be reprocessed.
 
 When multiple events arrive for the same library in quick succession (common during bulk imports), the debounce window coalesces them into a single processing run.
 
@@ -201,6 +201,8 @@ Responses:
 - `409 Conflict` — a scan is already in progress
 - `404 Not Found` — `library` param did not match any configured library
 - `405 Method Not Allowed` — non-POST request
+
+> **Network exposure note:** The webhook server has no built-in authentication. `POST /scan` triggers potentially long-running work, and `POST /webhook` accepts any well-formed Plex payload. Bind the port to a trusted network (e.g. a docker bridge with Plex, or behind a reverse proxy that does auth) -- don't expose it to the open internet.
 
 ## Batch Processing
 
