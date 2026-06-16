@@ -1,6 +1,11 @@
 package media
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/nullable-eth/labelarr/internal/plex"
+)
 
 func TestExtractTMDbIDFromPath(t *testing.T) {
 	tests := []struct {
@@ -268,6 +273,100 @@ func TestExtractTMDbIDFromPathEdgeCases(t *testing.T) {
 			result := ExtractTMDbIDFromPath(tt.path)
 			if result != tt.expected {
 				t.Errorf("ExtractTMDbIDFromPath(%q) = %q, want %q", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsExcludedByLabel(t *testing.T) {
+	tests := []struct {
+		name           string
+		excludeLabels  []string
+		itemLabels     []string
+		wantSkip       bool
+		wantMatchedTag string
+	}{
+		{
+			name:          "no exclude labels configured",
+			excludeLabels: nil,
+			itemLabels:    []string{"labelarr:skip"},
+			wantSkip:      false,
+		},
+		{
+			name:          "item has no labels",
+			excludeLabels: []string{"labelarr:skip"},
+			itemLabels:    nil,
+			wantSkip:      false,
+		},
+		{
+			name:          "exact match",
+			excludeLabels: []string{"labelarr:skip"},
+			itemLabels:    []string{"labelarr:skip"},
+			wantSkip:      true, wantMatchedTag: "labelarr:skip",
+		},
+		{
+			name:          "case-insensitive match (config upper, label lower)",
+			excludeLabels: []string{"LABELARR:SKIP"},
+			itemLabels:    []string{"labelarr:skip"},
+			wantSkip:      true, wantMatchedTag: "labelarr:skip",
+		},
+		{
+			name:          "case-insensitive match (config lower, label mixed)",
+			excludeLabels: []string{"home video"},
+			itemLabels:    []string{"Home Video"},
+			wantSkip:      true, wantMatchedTag: "Home Video",
+		},
+		{
+			name:          "multiple exclude labels, second one matches",
+			excludeLabels: []string{"foo", "labelarr:skip", "bar"},
+			itemLabels:    []string{"family", "labelarr:skip"},
+			wantSkip:      true, wantMatchedTag: "labelarr:skip",
+		},
+		{
+			name:          "no match",
+			excludeLabels: []string{"labelarr:skip"},
+			itemLabels:    []string{"family", "vacation"},
+			wantSkip:      false,
+		},
+		{
+			name:          "whitespace and casing in config are normalized",
+			excludeLabels: []string{"  Labelarr:Skip  "},
+			itemLabels:    []string{"labelarr:skip"},
+			wantSkip:      true, wantMatchedTag: "labelarr:skip",
+		},
+		{
+			name:          "empty string in config is ignored",
+			excludeLabels: []string{"", "labelarr:skip"},
+			itemLabels:    []string{""},
+			wantSkip:      false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Build the lowercased set the way NewProcessor does.
+			set := make(map[string]struct{})
+			for _, l := range tc.excludeLabels {
+				k := strings.TrimSpace(strings.ToLower(l))
+				if k == "" {
+					continue
+				}
+				set[k] = struct{}{}
+			}
+			p := &Processor{excludeLabels: set}
+
+			plexLabels := make([]plex.Label, 0, len(tc.itemLabels))
+			for _, l := range tc.itemLabels {
+				plexLabels = append(plexLabels, plex.Label{Tag: l})
+			}
+			item := plex.Movie{Title: "test", Year: 2020, Label: plexLabels}
+
+			gotTag, gotSkip := p.isExcludedByLabel(item)
+			if gotSkip != tc.wantSkip {
+				t.Errorf("skip=%v, want %v (matched tag %q)", gotSkip, tc.wantSkip, gotTag)
+			}
+			if tc.wantSkip && gotTag != tc.wantMatchedTag {
+				t.Errorf("matched tag=%q, want %q", gotTag, tc.wantMatchedTag)
 			}
 		})
 	}

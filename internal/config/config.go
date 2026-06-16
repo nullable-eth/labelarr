@@ -21,6 +21,7 @@ type Config struct {
 	TVLibraryID            string
 	TVProcessAll           bool
 	TVLibraryExclude       []string
+	ExcludeLabels          []string
 	WebhookOnly            bool
 	UpdateField            string
 	RemoveMode             string
@@ -78,6 +79,7 @@ func Load() *Config {
 		TVLibraryID:            os.Getenv("TV_LIBRARY_ID"),
 		TVProcessAll:           getBoolEnvWithDefault("TV_PROCESS_ALL", false),
 		TVLibraryExclude:       parseCSV(os.Getenv("TV_LIBRARY_EXCLUDE")),
+		ExcludeLabels:          parseCSV(os.Getenv("EXCLUDE_LABELS")),
 		WebhookOnly:            getBoolEnvWithDefault("WEBHOOK_ONLY", false),
 		UpdateField:            getEnvWithDefault("UPDATE_FIELD", "label"),
 		RemoveMode:             os.Getenv("REMOVE"),
