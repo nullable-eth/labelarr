@@ -60,7 +60,7 @@ type libraryInfo struct {
 type pendingWork struct {
 	libraryName string
 	mediaType   media.MediaType
-	ratingKeys  []string
+	ratingKeys  map[string]struct{}
 	timer       *time.Timer
 	gen         uint64
 }
@@ -314,15 +314,15 @@ func (s *Server) addPendingItem(libraryID, libraryName string, mediaType media.M
 		pw.timer.Stop()
 		pw.gen++
 		if ratingKey != "" {
-			pw.ratingKeys = appendUnique(pw.ratingKeys, ratingKey)
+			pw.ratingKeys[ratingKey] = struct{}{}
 		}
 		if s.config.VerboseLogging {
 			fmt.Printf("Webhook: reset debounce for library %s (%d items queued)\n", libraryName, len(pw.ratingKeys))
 		}
 	} else {
-		var keys []string
+		keys := make(map[string]struct{})
 		if ratingKey != "" {
-			keys = []string{ratingKey}
+			keys[ratingKey] = struct{}{}
 		}
 		pw = &pendingWork{
 			libraryName: libraryName,
@@ -341,21 +341,15 @@ func (s *Server) addPendingItem(libraryID, libraryName string, mediaType media.M
 			s.pendingMu.Unlock()
 			return
 		}
-		keys := current.ratingKeys
+		keys := make([]string, 0, len(current.ratingKeys))
+		for k := range current.ratingKeys {
+			keys = append(keys, k)
+		}
 		delete(s.pending, libraryID)
 		s.pendingMu.Unlock()
 
 		s.processItems(libraryID, libraryName, mediaType, keys)
 	})
-}
-
-func appendUnique(slice []string, val string) []string {
-	for _, v := range slice {
-		if v == val {
-			return slice
-		}
-	}
-	return append(slice, val)
 }
 
 func (s *Server) processItems(libraryID, libraryName string, mediaType media.MediaType, ratingKeys []string) {
