@@ -7,9 +7,9 @@ import (
 )
 
 func TestBatchProcessingDefaults(t *testing.T) {
-	// Clear environment variables
 	os.Unsetenv("BATCH_SIZE")
-	os.Unsetenv("BATCH_DELAY_SECONDS")
+	os.Unsetenv("BATCH_DELAY")
+	os.Unsetenv("ITEM_DELAY")
 
 	config := Load()
 
@@ -17,18 +17,23 @@ func TestBatchProcessingDefaults(t *testing.T) {
 		t.Errorf("Expected default BatchSize to be 100, got %d", config.BatchSize)
 	}
 
-	if config.BatchDelaySeconds != 10 {
-		t.Errorf("Expected default BatchDelaySeconds to be 10, got %d", config.BatchDelaySeconds)
+	if config.BatchDelay != 10*time.Second {
+		t.Errorf("Expected default BatchDelay to be 10s, got %v", config.BatchDelay)
+	}
+
+	if config.ItemDelay != 500*time.Millisecond {
+		t.Errorf("Expected default ItemDelay to be 500ms, got %v", config.ItemDelay)
 	}
 }
 
 func TestBatchProcessingCustomValues(t *testing.T) {
-	// Set custom values
 	os.Setenv("BATCH_SIZE", "50")
-	os.Setenv("BATCH_DELAY_SECONDS", "15")
+	os.Setenv("BATCH_DELAY", "15s")
+	os.Setenv("ITEM_DELAY", "200ms")
 	defer func() {
 		os.Unsetenv("BATCH_SIZE")
-		os.Unsetenv("BATCH_DELAY_SECONDS")
+		os.Unsetenv("BATCH_DELAY")
+		os.Unsetenv("ITEM_DELAY")
 	}()
 
 	config := Load()
@@ -37,35 +42,38 @@ func TestBatchProcessingCustomValues(t *testing.T) {
 		t.Errorf("Expected BatchSize to be 50, got %d", config.BatchSize)
 	}
 
-	if config.BatchDelaySeconds != 15 {
-		t.Errorf("Expected BatchDelaySeconds to be 15, got %d", config.BatchDelaySeconds)
+	if config.BatchDelay != 15*time.Second {
+		t.Errorf("Expected BatchDelay to be 15s, got %v", config.BatchDelay)
+	}
+
+	if config.ItemDelay != 200*time.Millisecond {
+		t.Errorf("Expected ItemDelay to be 200ms, got %v", config.ItemDelay)
 	}
 }
 
 func TestBatchProcessingInvalidValues(t *testing.T) {
-	// Test invalid batch size
+	// BATCH_SIZE=0 should fall back to the default via getIntEnvWithDefault
 	os.Setenv("BATCH_SIZE", "0")
-	os.Setenv("BATCH_DELAY_SECONDS", "10")
+	os.Setenv("BATCH_DELAY", "10s")
 	defer func() {
 		os.Unsetenv("BATCH_SIZE")
-		os.Unsetenv("BATCH_DELAY_SECONDS")
+		os.Unsetenv("BATCH_DELAY")
 	}()
 
 	config := Load()
 
-	// Should fall back to default for invalid values
 	if config.BatchSize != 100 {
 		t.Errorf("Expected BatchSize to fall back to default 100 for invalid value, got %d", config.BatchSize)
 	}
 
-	// Test negative delay
+	// Unparseable BATCH_DELAY should fall back to the default
 	os.Setenv("BATCH_SIZE", "50")
-	os.Setenv("BATCH_DELAY_SECONDS", "-5")
+	os.Setenv("BATCH_DELAY", "nonsense")
 
 	config = Load()
 
-	if config.BatchDelaySeconds != 10 {
-		t.Errorf("Expected BatchDelaySeconds to fall back to default 10 for negative value, got %d", config.BatchDelaySeconds)
+	if config.BatchDelay != 10*time.Second {
+		t.Errorf("Expected BatchDelay to fall back to default 10s for invalid value, got %v", config.BatchDelay)
 	}
 }
 
@@ -78,7 +86,8 @@ func TestBatchProcessingValidation(t *testing.T) {
 		UpdateField:         "label",
 		ExportMode:          "txt",
 		BatchSize:           0, // Invalid
-		BatchDelaySeconds:   10,
+		BatchDelay:          10 * time.Second,
+		ItemDelay:           500 * time.Millisecond,
 	}
 
 	err := config.Validate()
@@ -87,30 +96,34 @@ func TestBatchProcessingValidation(t *testing.T) {
 	}
 
 	config.BatchSize = 100
-	config.BatchDelaySeconds = -1 // Invalid
+	config.BatchDelay = -1 * time.Second // Invalid
 
 	err = config.Validate()
 	if err == nil {
-		t.Error("Expected validation error for BatchDelaySeconds < 0")
+		t.Error("Expected validation error for BatchDelay < 0")
 	}
 
-	config.BatchDelaySeconds = 0 // Valid (0 means no delay)
+	config.BatchDelay = 0 // Valid (0 means no delay)
 
 	err = config.Validate()
 	if err != nil {
 		t.Errorf("Expected no validation error, got: %v", err)
 	}
+
+	config.ItemDelay = -1 * time.Millisecond // Invalid
+	err = config.Validate()
+	if err == nil {
+		t.Error("Expected validation error for ItemDelay < 0")
+	}
 }
 
 func TestGetIntEnvWithDefault(t *testing.T) {
-	// Test default value when env var is not set
 	os.Unsetenv("TEST_INT")
 	result := getIntEnvWithDefault("TEST_INT", 42)
 	if result != 42 {
 		t.Errorf("Expected default value 42, got %d", result)
 	}
 
-	// Test valid integer
 	os.Setenv("TEST_INT", "123")
 	defer os.Unsetenv("TEST_INT")
 	result = getIntEnvWithDefault("TEST_INT", 42)
@@ -118,21 +131,20 @@ func TestGetIntEnvWithDefault(t *testing.T) {
 		t.Errorf("Expected parsed value 123, got %d", result)
 	}
 
-	// Test invalid integer (should return default)
 	os.Setenv("TEST_INT", "invalid")
 	result = getIntEnvWithDefault("TEST_INT", 42)
 	if result != 42 {
 		t.Errorf("Expected default value 42 for invalid input, got %d", result)
 	}
 
-	// Test zero value (should return default for batch processing)
+	// Zero should fall back to default (positive-value guarantee)
 	os.Setenv("TEST_INT", "0")
 	result = getIntEnvWithDefault("TEST_INT", 42)
 	if result != 42 {
 		t.Errorf("Expected default value 42 for zero input, got %d", result)
 	}
 
-	// Test negative value (should return default for batch processing)
+	// Negative should fall back to default
 	os.Setenv("TEST_INT", "-10")
 	result = getIntEnvWithDefault("TEST_INT", 42)
 	if result != 42 {
@@ -141,11 +153,10 @@ func TestGetIntEnvWithDefault(t *testing.T) {
 }
 
 func TestBackwardCompatibility(t *testing.T) {
-	// Clear all batch-related environment variables to simulate old config
 	os.Unsetenv("BATCH_SIZE")
-	os.Unsetenv("BATCH_DELAY_SECONDS")
-	
-	// Set only the required environment variables (simulating old config)
+	os.Unsetenv("BATCH_DELAY")
+	os.Unsetenv("ITEM_DELAY")
+
 	os.Setenv("PLEX_TOKEN", "test-token")
 	os.Setenv("TMDB_READ_ACCESS_TOKEN", "test-tmdb-token")
 	os.Setenv("PLEX_SERVER", "localhost")
@@ -159,22 +170,19 @@ func TestBackwardCompatibility(t *testing.T) {
 
 	config := Load()
 
-	// Verify that batch processing gets sensible defaults
 	if config.BatchSize != 100 {
-		t.Errorf("Expected default BatchSize 100 for backward compatibility, got %d", config.BatchSize)
+		t.Errorf("Expected default BatchSize 100, got %d", config.BatchSize)
 	}
 
-	if config.BatchDelaySeconds != 10 {
-		t.Errorf("Expected default BatchDelaySeconds 10 for backward compatibility, got %d", config.BatchDelaySeconds)
+	if config.BatchDelay != 10*time.Second {
+		t.Errorf("Expected default BatchDelay 10s, got %v", config.BatchDelay)
 	}
 
-	// Verify that validation passes with defaults
 	err := config.Validate()
 	if err != nil {
 		t.Errorf("Expected validation to pass with default batch settings, got error: %v", err)
 	}
 
-	// Verify that all other existing functionality is preserved
 	if config.UpdateField != "label" {
 		t.Errorf("Expected default UpdateField 'label', got '%s'", config.UpdateField)
 	}

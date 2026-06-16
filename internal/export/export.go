@@ -100,7 +100,10 @@ func (e *Exporter) SetCurrentLibrary(libraryName string) error {
 
 	// Only create library-specific subdirectory in txt mode
 	if e.exportMode == "txt" {
-		libraryPath := filepath.Join(e.exportLocation, sanitizedName)
+		libraryPath, err := e.safeJoin(sanitizedName)
+		if err != nil {
+			return fmt.Errorf("invalid library path: %w", err)
+		}
 		if err := os.MkdirAll(libraryPath, 0755); err != nil {
 			return fmt.Errorf("failed to create library directory %s: %w", libraryPath, err)
 		}
@@ -196,7 +199,10 @@ func (e *Exporter) FlushAll() error {
 func (e *Exporter) flushTxt() error {
 	// Process each library
 	for libraryName, libraryData := range e.accumulated {
-		libraryPath := filepath.Join(e.exportLocation, libraryName)
+		libraryPath, err := e.safeJoin(libraryName)
+		if err != nil {
+			return fmt.Errorf("invalid library path: %w", err)
+		}
 
 		// Ensure library directory exists
 		if err := os.MkdirAll(libraryPath, 0755); err != nil {
@@ -253,7 +259,10 @@ func (e *Exporter) flushJSON() error {
 	jsonData := e.buildJSONExportData()
 
 	// Write JSON file
-	jsonPath := filepath.Join(e.exportLocation, "export.json")
+	jsonPath, err := e.safeJoin("export.json")
+	if err != nil {
+		return fmt.Errorf("invalid JSON export path: %w", err)
+	}
 	file, err := os.Create(jsonPath)
 	if err != nil {
 		return fmt.Errorf("failed to create JSON export file: %w", err)
@@ -274,7 +283,10 @@ func (e *Exporter) flushJSON() error {
 
 // writeSummary writes a summary.txt file with detailed statistics
 func (e *Exporter) writeSummary() error {
-	summaryPath := filepath.Join(e.exportLocation, "summary.txt")
+	summaryPath, err := e.safeJoin("summary.txt")
+	if err != nil {
+		return fmt.Errorf("invalid summary path: %w", err)
+	}
 
 	file, err := os.Create(summaryPath)
 	if err != nil {
@@ -319,7 +331,7 @@ func (e *Exporter) writeSummary() error {
 	}
 
 	// Write export file list
-	fmt.Fprintf(file, "📁 Export Files Generated:\n")
+	fmt.Fprintf(file, "[STORAGE] Export Files Generated:\n")
 	for libraryName := range libraryStats {
 		for _, label := range e.exportLabels {
 			if stats, exists := libraryStats[libraryName][label]; exists && stats.Count > 0 {
@@ -330,13 +342,13 @@ func (e *Exporter) writeSummary() error {
 	fmt.Fprintf(file, "\n")
 
 	// Write totals
-	fmt.Fprintf(file, "📊 Overall Statistics:\n")
+	fmt.Fprintf(file, "[STATS] Overall Statistics:\n")
 	fmt.Fprintf(file, "  Total files: %d\n", totalFiles)
 	fmt.Fprintf(file, "  Total size: %s (%d bytes)\n", formatFileSize(totalSize), totalSize)
 	fmt.Fprintf(file, "\n")
 
 	// Write per-library breakdown
-	fmt.Fprintf(file, "📚 Library Breakdown:\n")
+	fmt.Fprintf(file, "[INFO] Library Breakdown:\n")
 	for libraryName, labelStats := range libraryStats {
 		fmt.Fprintf(file, "\n  %s:\n", libraryName)
 
@@ -363,7 +375,7 @@ func (e *Exporter) writeSummary() error {
 	}
 
 	// Write per-label totals across all libraries
-	fmt.Fprintf(file, "\n🏷️ Label Totals (All Libraries):\n")
+	fmt.Fprintf(file, "\n[LABEL] Label Totals (All Libraries):\n")
 	labelTotals := make(map[string]struct {
 		Count int
 		Size  int64
@@ -414,14 +426,20 @@ func (e *Exporter) ClearExportFiles() error {
 
 	// Remove all library subdirectories and their contents
 	for libraryName := range e.accumulated {
-		libraryPath := filepath.Join(e.exportLocation, libraryName)
+		libraryPath, err := e.safeJoin(libraryName)
+		if err != nil {
+			return fmt.Errorf("invalid library path: %w", err)
+		}
 		if err := os.RemoveAll(libraryPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove library directory %s: %w", libraryPath, err)
 		}
 	}
 
 	// Remove summary file
-	summaryPath := filepath.Join(e.exportLocation, "summary.txt")
+	summaryPath, err := e.safeJoin("summary.txt")
+	if err != nil {
+		return fmt.Errorf("invalid summary path: %w", err)
+	}
 	if err := os.Remove(summaryPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove summary file: %w", err)
 	}
@@ -490,15 +508,38 @@ func (e *Exporter) GetCurrentLibrary() string {
 	return e.currentLibrary
 }
 
-// sanitizeFilename removes invalid characters from filenames
+// sanitizeFilename removes invalid characters from filenames and rejects
+// dots-only names that could traverse outside the export directory.
 func sanitizeFilename(filename string) string {
-	// Replace common invalid characters with underscores
 	invalid := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
 	result := filename
 	for _, char := range invalid {
 		result = strings.ReplaceAll(result, char, "_")
 	}
-	return strings.TrimSpace(result)
+	result = strings.TrimSpace(result)
+	if result == "" || result == "." || result == ".." {
+		return "_"
+	}
+	return result
+}
+
+// safeJoin joins path elements onto the export location and guarantees the
+// resolved absolute path stays within the export root. Returns an error if
+// the result would escape (e.g. via "..", absolute paths, or similar).
+func (e *Exporter) safeJoin(elems ...string) (string, error) {
+	joined := filepath.Join(append([]string{e.exportLocation}, elems...)...)
+	absBase, err := filepath.Abs(e.exportLocation)
+	if err != nil {
+		return "", fmt.Errorf("resolve export location: %w", err)
+	}
+	absJoined, err := filepath.Abs(joined)
+	if err != nil {
+		return "", fmt.Errorf("resolve joined path: %w", err)
+	}
+	if absJoined != absBase && !strings.HasPrefix(absJoined, absBase+string(filepath.Separator)) {
+		return "", fmt.Errorf("path %q escapes export location %q", joined, e.exportLocation)
+	}
+	return joined, nil
 }
 
 // buildJSONExportData builds a JSONExportData struct from the accumulated data

@@ -78,7 +78,7 @@ func (c *Client) GetMovieKeywords(tmdbID string) ([]string, error) {
 	if c.config.VerboseLogging {
 		for i, original := range keywords {
 			if i < len(normalizedKeywords) && original != normalizedKeywords[i] {
-				fmt.Printf("   📝 Normalized: \"%s\" → \"%s\"\n", original, normalizedKeywords[i])
+				fmt.Printf("   [NOTE] Normalized: \"%s\" -> \"%s\"\n", original, normalizedKeywords[i])
 			}
 		}
 	}
@@ -139,7 +139,7 @@ func (c *Client) GetTVShowKeywords(tmdbID string) ([]string, error) {
 	if c.config.VerboseLogging {
 		for i, original := range keywords {
 			if i < len(normalizedKeywords) && original != normalizedKeywords[i] {
-				fmt.Printf("   📝 Normalized: \"%s\" → \"%s\"\n", original, normalizedKeywords[i])
+				fmt.Printf("   [NOTE] Normalized: \"%s\" -> \"%s\"\n", original, normalizedKeywords[i])
 			}
 		}
 	}

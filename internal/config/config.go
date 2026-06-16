@@ -10,18 +10,22 @@ import (
 
 // Config holds all application configuration
 type Config struct {
-	Protocol            string
-	PlexServer          string
-	PlexPort            string
-	PlexToken           string
-	MovieLibraryID      string
-	MovieProcessAll     bool
-	TVLibraryID         string
-	TVProcessAll        bool
-	UpdateField         string
-	RemoveMode          string
-	TMDbReadAccessToken string
-	ProcessTimer        time.Duration
+	Protocol               string
+	PlexInsecureSkipVerify bool
+	PlexServer             string
+	PlexPort               string
+	PlexToken              string
+	MovieLibraryID         string
+	MovieProcessAll        bool
+	MovieLibraryExclude    []string
+	TVLibraryID            string
+	TVProcessAll           bool
+	TVLibraryExclude       []string
+	WebhookOnly            bool
+	UpdateField            string
+	RemoveMode             string
+	TMDbReadAccessToken    string
+	ProcessTimer           time.Duration
 
 	// Radarr configuration
 	RadarrURL    string
@@ -42,30 +46,43 @@ type Config struct {
 	// Force update configuration
 	ForceUpdate bool
 
+	// Webhook configuration
+	WebhookEnabled  bool
+	WebhookPort     int
+	WebhookDebounce time.Duration
+
+	// Keyword prefix configuration
+	KeywordPrefix string
+
+	// Batch processing configuration
+	BatchSize  int
+	BatchDelay time.Duration
+	ItemDelay  time.Duration
+
 	// Export configuration
 	ExportLabels   []string
 	ExportLocation string
 	ExportMode     string
-
-	// Batch processing configuration
-	BatchSize         int
-	BatchDelaySeconds int
 }
 
 // Load loads configuration from environment variables
 func Load() *Config {
 	config := &Config{
-		PlexServer:          os.Getenv("PLEX_SERVER"),
-		PlexPort:            os.Getenv("PLEX_PORT"),
-		PlexToken:           os.Getenv("PLEX_TOKEN"),
-		MovieLibraryID:      os.Getenv("MOVIE_LIBRARY_ID"),
-		MovieProcessAll:     getBoolEnvWithDefault("MOVIE_PROCESS_ALL", false),
-		TVLibraryID:         os.Getenv("TV_LIBRARY_ID"),
-		TVProcessAll:        getBoolEnvWithDefault("TV_PROCESS_ALL", false),
-		UpdateField:         getEnvWithDefault("UPDATE_FIELD", "label"),
-		RemoveMode:          os.Getenv("REMOVE"),
-		TMDbReadAccessToken: os.Getenv("TMDB_READ_ACCESS_TOKEN"),
-		ProcessTimer:        getProcessTimerFromEnv(),
+		PlexInsecureSkipVerify: getBoolEnvWithDefault("PLEX_INSECURE_SKIP_VERIFY", false),
+		PlexServer:             os.Getenv("PLEX_SERVER"),
+		PlexPort:               os.Getenv("PLEX_PORT"),
+		PlexToken:              os.Getenv("PLEX_TOKEN"),
+		MovieLibraryID:         os.Getenv("MOVIE_LIBRARY_ID"),
+		MovieProcessAll:        getBoolEnvWithDefault("MOVIE_PROCESS_ALL", false),
+		MovieLibraryExclude:    parseCSV(os.Getenv("MOVIE_LIBRARY_EXCLUDE")),
+		TVLibraryID:            os.Getenv("TV_LIBRARY_ID"),
+		TVProcessAll:           getBoolEnvWithDefault("TV_PROCESS_ALL", false),
+		TVLibraryExclude:       parseCSV(os.Getenv("TV_LIBRARY_EXCLUDE")),
+		WebhookOnly:            getBoolEnvWithDefault("WEBHOOK_ONLY", false),
+		UpdateField:            getEnvWithDefault("UPDATE_FIELD", "label"),
+		RemoveMode:             os.Getenv("REMOVE"),
+		TMDbReadAccessToken:    os.Getenv("TMDB_READ_ACCESS_TOKEN"),
+		ProcessTimer:           getDurationEnvWithDefault("PROCESS_TIMER", "1h"),
 
 		// Radarr configuration
 		RadarrURL:    os.Getenv("RADARR_URL"),
@@ -86,14 +103,23 @@ func Load() *Config {
 		// Force update configuration
 		ForceUpdate: getBoolEnvWithDefault("FORCE_UPDATE", false),
 
-		// Export configuration
-		ExportLabels:   parseExportLabels(os.Getenv("EXPORT_LABELS")),
-		ExportLocation: os.Getenv("EXPORT_LOCATION"),
-		ExportMode:     getEnvWithDefault("EXPORT_MODE", "txt"),
+		// Webhook configuration
+		WebhookEnabled:  getBoolEnvWithDefault("WEBHOOK_ENABLED", false),
+		WebhookPort:     getIntEnvWithDefault("WEBHOOK_PORT", 9090),
+		WebhookDebounce: getDurationEnvWithDefault("WEBHOOK_DEBOUNCE", "30s"),
+
+		// Keyword prefix configuration
+		KeywordPrefix: os.Getenv("KEYWORD_PREFIX"),
 
 		// Batch processing configuration
-		BatchSize:         getIntEnvWithDefault("BATCH_SIZE", 100),
-		BatchDelaySeconds: getIntEnvWithDefault("BATCH_DELAY_SECONDS", 10),
+		BatchSize:  getIntEnvWithDefault("BATCH_SIZE", 100),
+		BatchDelay: getDurationEnvWithDefault("BATCH_DELAY", "10s"),
+		ItemDelay:  getDurationEnvWithDefault("ITEM_DELAY", "500ms"),
+
+		// Export configuration
+		ExportLabels:   parseCSV(os.Getenv("EXPORT_LABELS")),
+		ExportLocation: os.Getenv("EXPORT_LOCATION"),
+		ExportMode:     getEnvWithDefault("EXPORT_MODE", "txt"),
 	}
 
 	// Set protocol based on HTTPS requirement
@@ -144,6 +170,16 @@ func (c *Config) Validate() error {
 	if c.ExportMode != "txt" && c.ExportMode != "json" {
 		return fmt.Errorf("EXPORT_MODE must be 'txt' or 'json'")
 	}
+	if c.WebhookOnly && !c.WebhookEnabled {
+		return fmt.Errorf("WEBHOOK_ONLY=true requires WEBHOOK_ENABLED=true")
+	}
+
+	if c.WebhookEnabled && (c.WebhookPort < 1 || c.WebhookPort > 65535) {
+		return fmt.Errorf("WEBHOOK_PORT must be between 1 and 65535")
+	}
+	if c.BatchSize < 1 {
+		return fmt.Errorf("BATCH_SIZE must be at least 1")
+	}
 
 	// Validate Radarr configuration if enabled
 	if c.UseRadarr {
@@ -169,8 +205,11 @@ func (c *Config) Validate() error {
 	if c.BatchSize <= 0 {
 		return fmt.Errorf("BATCH_SIZE must be greater than 0")
 	}
-	if c.BatchDelaySeconds < 0 {
-		return fmt.Errorf("BATCH_DELAY_SECONDS must be 0 or greater")
+	if c.BatchDelay < 0 {
+		return fmt.Errorf("BATCH_DELAY must be 0 or greater")
+	}
+	if c.ItemDelay < 0 {
+		return fmt.Errorf("ITEM_DELAY must be 0 or greater")
 	}
 
 	return nil
@@ -181,15 +220,6 @@ func getEnvWithDefault(envVar, defaultValue string) string {
 		return value
 	}
 	return defaultValue
-}
-
-func getProcessTimerFromEnv() time.Duration {
-	timerStr := getEnvWithDefault("PROCESS_TIMER", "1h")
-	timer, err := time.ParseDuration(timerStr)
-	if err != nil {
-		return 5 * time.Minute
-	}
-	return timer
 }
 
 func getBoolEnvWithDefault(envVar string, defaultValue bool) bool {
@@ -213,27 +243,36 @@ func getIntEnvWithDefault(envVar string, defaultValue int) int {
 	if err != nil {
 		return defaultValue
 	}
-	// Ensure positive values for batch processing
+	// Ensure positive values (e.g. BATCH_SIZE, WEBHOOK_PORT must not be <= 0)
 	if result <= 0 {
 		return defaultValue
 	}
 	return result
 }
 
-func parseExportLabels(labels string) []string {
-	if labels == "" {
+func getDurationEnvWithDefault(envVar string, defaultValue string) time.Duration {
+	value := getEnvWithDefault(envVar, defaultValue)
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		fallback, _ := time.ParseDuration(defaultValue)
+		return fallback
+	}
+	return duration
+}
+
+func parseCSV(s string) []string {
+	if s == "" {
 		return nil
 	}
-	// Split and trim whitespace from each label
-	rawLabels := strings.Split(labels, ",")
-	var cleanLabels []string
-	for _, label := range rawLabels {
-		trimmed := strings.TrimSpace(label)
+	parts := strings.Split(s, ",")
+	var out []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
 		if trimmed != "" {
-			cleanLabels = append(cleanLabels, trimmed)
+			out = append(out, trimmed)
 		}
 	}
-	return cleanLabels
+	return out
 }
 
 // HasExportEnabled returns true if export functionality is enabled

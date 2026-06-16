@@ -1,10 +1,24 @@
 # Git
 .git
 .gitignore
+.github
 
 # IDE
 .vscode
 .idea
+.claude
+
+# Secrets / env files
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+
+# Local-only docs / scratch
+CLAUDE.md
+PR_DESCRIPTION.md
+tmp/
 
 # Go build artifacts
 *.exe

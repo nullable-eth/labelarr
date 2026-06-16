@@ -37,3 +37,20 @@ services:
       - USE_SONARR=false  # Set to true to enable
       - SONARR_URL=http://localhost:8989  # Your Sonarr URL
       - SONARR_API_KEY=your_sonarr_api_key  # Your Sonarr API key
+
+      # Batch processing (optional, for large libraries)
+      # - BATCH_SIZE=100
+      # - BATCH_DELAY=10s
+      # - ITEM_DELAY=500ms
+
+      # Keyword prefix (optional, useful with UPDATE_FIELD=genre)
+      # Use quotes to preserve the trailing space (matches the README example).
+      # - KEYWORD_PREFIX="- "
+
+      # Webhook support (optional, for real-time processing)
+      # - WEBHOOK_ENABLED=true
+      # - WEBHOOK_PORT=9090
+      # - WEBHOOK_DEBOUNCE=30s
+    # Uncomment if using webhooks:
+    # ports:
+    #   - "9090:9090"

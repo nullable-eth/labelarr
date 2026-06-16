@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o labelarr ./cmd/labelarr
 
 # Runtime stage
-FROM alpine:3.21
+FROM alpine:3.22
 
 # Install ca-certificates for HTTPS requests and debugging tools
 # Using retry logic for QEMU emulation stability during multi-arch builds
@@ -27,5 +27,7 @@ COPY --from=builder /app/labelarr .
 RUN adduser -D -s /bin/bash labelarr
 USER labelarr
 
-# Run the application
+# Webhook server port (only used when WEBHOOK_ENABLED=true)
+EXPOSE 9090
+
 CMD ["./labelarr"] 
