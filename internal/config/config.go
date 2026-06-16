@@ -201,6 +201,17 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate batch processing configuration
+	if c.BatchSize <= 0 {
+		return fmt.Errorf("BATCH_SIZE must be greater than 0")
+	}
+	if c.BatchDelay < 0 {
+		return fmt.Errorf("BATCH_DELAY must be 0 or greater")
+	}
+	if c.ItemDelay < 0 {
+		return fmt.Errorf("ITEM_DELAY must be 0 or greater")
+	}
+
 	return nil
 }
 
@@ -230,6 +241,10 @@ func getIntEnvWithDefault(envVar string, defaultValue int) int {
 	}
 	result, err := strconv.Atoi(value)
 	if err != nil {
+		return defaultValue
+	}
+	// Ensure positive values (e.g. BATCH_SIZE, WEBHOOK_PORT must not be <= 0)
+	if result <= 0 {
 		return defaultValue
 	}
 	return result

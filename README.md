@@ -6,8 +6,16 @@
 
 Syncs TMDb keywords to Plex as labels or genres. Runs as a Docker container on a timer, or reacts to Plex webhooks in real time.
 
+## Upgrade notes (breaking changes)
+
+If you're upgrading from an earlier release, two configuration changes are worth a quick check before you redeploy:
+
+- **Plex TLS certificate verification is now enabled by default.** Previously, Labelarr silently trusted any Plex certificate. If your Plex server uses a self-signed cert (the default for most homelab installs and Plex's built-in `*.plex.direct` certs accessed by raw IP), set `PLEX_INSECURE_SKIP_VERIFY=true` to restore the previous behavior. A `[WARN]` line is logged at startup whenever the flag is on. See [CHANGELOG 1.3.1](CHANGELOG.md) for the full rationale (CodeQL `go/disabled-certificate-check`).
+- **`BATCH_DELAY_SECONDS` has been renamed to `BATCH_DELAY`** and now accepts Go duration strings instead of an integer. Migrate `BATCH_DELAY_SECONDS=10` to `BATCH_DELAY=10s`. Similarly, `ITEM_DELAY` is now a duration (default `500ms`). The integer-seconds form is no longer accepted.
+
 ## Table of Contents
 
+- [Upgrade notes (breaking changes)](#upgrade-notes-breaking-changes)
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
 - [Environment Variables](#environment-variables)

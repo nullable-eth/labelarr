@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nullable-eth/labelarr/internal/utils"
 )
 
 var nonAlphanumeric = regexp.MustCompile(`[^a-z0-9]`)
@@ -23,21 +25,30 @@ func containsEither(a, b string) bool {
 }
 
 type Client struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
-	series     []Series
-	seriesMu   sync.Mutex
+	baseURL     string
+	apiKey      string
+	httpClient  *http.Client
+	retryClient *utils.RetryableHTTPClient
+	series      []Series
+	seriesMu    sync.Mutex
 }
 
 func NewClient(baseURL, apiKey string) *Client {
+	return NewClientWithRetryConfig(baseURL, apiKey, nil)
+}
+
+// NewClientWithRetryConfig creates a new Sonarr API client with custom retry configuration.
+// Pass nil for retryConfig to use the default exponential backoff configuration.
+func NewClientWithRetryConfig(baseURL, apiKey string, retryConfig *utils.RetryConfig) *Client {
 	baseURL = strings.TrimRight(baseURL, "/")
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	return &Client{
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		baseURL:     baseURL,
+		apiKey:      apiKey,
+		httpClient:  httpClient,
+		retryClient: utils.NewRetryableHTTPClient(httpClient, retryConfig),
 	}
 }
 
@@ -56,7 +67,7 @@ func (c *Client) makeRequest(method, endpoint string, params url.Values) (*http.
 	req.Header.Set("X-Api-Key", c.apiKey)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.retryClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
